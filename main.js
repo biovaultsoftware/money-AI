@@ -1406,11 +1406,40 @@
     el.style.height = Math.min(120, el.scrollHeight) + 'px';
   }
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      DOM.thread.scrollTop = DOM.thread.scrollHeight;
-    });
+// Optimized scrollToBottom
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    // We use the ID 'thread' as defined in your HTML
+    const threadEl = document.getElementById('thread');
+    if (threadEl) {
+      threadEl.scrollTop = threadEl.scrollHeight;
+    }
+  });
+}
+
+// Update the message adding logic to trigger the scroll
+async function addMessage(chatId, dir, text, opts = {}) {
+  const msg = {
+    id: `${chatId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+    chatId,
+    dir,
+    text,
+    ts: Date.now(),
+    ...opts
+  };
+
+  await DB.put('messages', msg);
+  
+  if (!state.messages.has(chatId)) {
+    state.messages.set(chatId, []);
   }
+  state.messages.get(chatId).push(msg);
+
+  // TRIGGER SCROLL IMMEDIATELY AFTER ADDING
+  scrollToBottom();
+
+  return msg;
+}
 
   function showToast(message) {
     DOM.toastText.textContent = message;
@@ -1465,6 +1494,16 @@
 
     // Council
     DOM.btnCouncil.addEventListener('click', summonCouncil);
+
+    // Add this inside bindEvents() in main.js
+    const scrollObserver = new MutationObserver(() => {
+      scrollToBottom();
+    });
+    
+    scrollObserver.observe(DOM.thread, { 
+      childList: true, 
+      subtree: true 
+    });
 
     // Insights drawer (mobile)
     DOM.btnInsights.addEventListener('click', () => toggleDrawer(true));
