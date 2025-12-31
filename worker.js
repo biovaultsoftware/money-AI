@@ -30,7 +30,9 @@ const CONFIG = {
     'http://localhost:5500',
     'http://127.0.0.1:5500',
     'https://your-app.pages.dev',
-    'https://moneyai.app'
+    'https://moneyai.app',
+    'https://human1stai.rr-rshemodel.workers.dev',
+    'null' // For local file:// testing
   ]
 };
 
@@ -279,7 +281,65 @@ export default {
       return handleOptions(request);
     }
 
-    // Only allow POST
+    // Friendly response for GET requests (browser visits)
+    if (request.method === 'GET') {
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Money AI Bridge</title>
+  <style>
+    body { 
+      font-family: system-ui; 
+      background: #0a0c10; 
+      color: #f1f5f9; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      min-height: 100vh; 
+      margin: 0;
+    }
+    .card { 
+      background: #12151c; 
+      padding: 40px; 
+      border-radius: 16px; 
+      text-align: center;
+      border: 1px solid #1a1f2a;
+      max-width: 400px;
+    }
+    h1 { color: #f59e0b; margin: 0 0 10px; }
+    p { color: #94a3b8; margin: 10px 0; }
+    .status { 
+      display: inline-block;
+      padding: 4px 12px; 
+      background: #22c55e22; 
+      color: #22c55e; 
+      border-radius: 20px; 
+      font-size: 12px;
+      margin-top: 20px;
+    }
+    code { 
+      background: #1a1f2a; 
+      padding: 2px 8px; 
+      border-radius: 4px; 
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>💰 Money AI Bridge</h1>
+    <p>Cloudflare Worker → Gemini 1.5 Flash</p>
+    <p style="font-size: 13px;">This endpoint accepts <code>POST</code> requests only.</p>
+    <span class="status">✓ Worker Online</span>
+  </div>
+</body>
+</html>`;
+      return new Response(html, {
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+
+    // Only allow POST for API
     if (request.method !== 'POST') {
       return new Response(JSON.stringify({ error: 'Method not allowed' }), {
         status: 405,
