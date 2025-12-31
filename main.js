@@ -37,8 +37,8 @@
     // API CONFIGURATION
     // Set USE_REAL_API to true and configure WORKER_URL to use Gemini
     // ═══════════════════════════════════════════════════════════════════════
-    USE_REAL_API: false,
-    WORKER_URL: 'https://moneyai-bridge.YOUR_SUBDOMAIN.workers.dev',
+    USE_REAL_API: true,
+    WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev',
     API_TIMEOUT: 15000
   };
 
