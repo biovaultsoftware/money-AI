@@ -14,6 +14,7 @@
  * - Coal → Gold Dynamic Theming
  * - IndexedDB Local Persistence
  * - PWA with Offline Support
+ * - Cloudflare + Gemini API Integration
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -30,7 +31,15 @@
     SESSION_LIMIT: 12,
     TYPING_DELAY_MIN: 800,
     TYPING_DELAY_MAX: 2000,
-    TOAST_DURATION: 2500
+    TOAST_DURATION: 2500,
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // API CONFIGURATION
+    // Set USE_REAL_API to true and configure WORKER_URL to use Gemini
+    // ═══════════════════════════════════════════════════════════════════════
+    USE_REAL_API: false,
+    WORKER_URL: 'https://moneyai-bridge.YOUR_SUBDOMAIN.workers.dev',
+    API_TIMEOUT: 15000
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -990,6 +999,83 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // REAL API MODULE (Cloudflare Worker + Gemini)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const API = {
+    async chat(chatId, userText, history = []) {
+      if (!CONFIG.USE_REAL_API) {
+        // Fallback to mock responses
+        return {
+          reply: generateReply(chatId, userText),
+          focus: classifyFocus([{ text: userText }]),
+          scoreDelta: calculateRushRichDelta(userText)
+        };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
+
+      try {
+        const response = await fetch(CONFIG.WORKER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            mentor: chatId,
+            message: userText,
+            history: history.slice(-6).map(m => ({
+              role: m.dir === 'out' ? 'user' : 'assistant',
+              text: m.text
+            })),
+            sessionId: `${chatId}:${Date.now()}`
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          
+          if (response.status === 429) {
+            showToast('⚠️ Rate limit reached. Try again later.');
+          }
+          
+          throw new Error(error.message || `API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        return {
+          reply: data.reply || generateReply(chatId, userText),
+          focus: data.focus || 'general',
+          scoreDelta: data.scoreDelta || 0,
+          rateLimitRemaining: data.rateLimitRemaining
+        };
+
+      } catch (err) {
+        clearTimeout(timeout);
+        
+        if (err.name === 'AbortError') {
+          console.warn('API timeout, using fallback');
+          showToast('⏳ Slow connection, using offline mode');
+        } else {
+          console.error('API error:', err);
+        }
+
+        // Fallback to mock
+        return {
+          reply: generateReply(chatId, userText),
+          focus: classifyFocus([{ text: userText }]),
+          scoreDelta: calculateRushRichDelta(userText)
+        };
+      }
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // MESSAGING
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1039,27 +1125,39 @@
     // Show typing indicator
     showTypingIndicator();
 
-    // Generate reply after delay
-    const delay = CONFIG.TYPING_DELAY_MIN + Math.random() * (CONFIG.TYPING_DELAY_MAX - CONFIG.TYPING_DELAY_MIN);
+    // Get conversation history
+    const history = state.messages.get(chatId) || [];
+
+    // Call API (real or mock based on config)
+    const apiResponse = await API.chat(chatId, text, history);
+
+    // Calculate delay based on response length for natural feel
+    const baseDelay = CONFIG.TYPING_DELAY_MIN;
+    const lengthDelay = Math.min(apiResponse.reply.length * 10, 1500);
+    const delay = CONFIG.USE_REAL_API ? 100 : baseDelay + Math.random() * lengthDelay;
     
     setTimeout(async () => {
       hideTypingIndicator();
       
-      const reply = generateReply(chatId, text);
       const mentor = state.mentors.find(m => m.id === chatId);
       
-      await addMessage(chatId, 'in', reply, {
+      await addMessage(chatId, 'in', apiResponse.reply, {
         tag: mentor?.name,
         chips: generateChips(chatId)
       });
 
+      // Update scores based on API response
+      if (apiResponse.scoreDelta !== 0) {
+        thread.richScore = Math.max(0, Math.min(100, (thread.richScore || 30) + apiResponse.scoreDelta));
+        thread.rushScore = 100 - thread.richScore;
+      }
+
       // Update rich actions if rich-oriented response
       if (thread.richScore > 50) {
         thread.richActions = (thread.richActions || 0) + 1;
-        await DB.put('threads', thread);
       }
 
-      thread.lastPreview = truncate(reply, 40);
+      thread.lastPreview = truncate(apiResponse.reply, 40);
       await DB.put('threads', thread);
 
       state.isSending = false;
@@ -1068,6 +1166,11 @@
       renderThread();
       renderChatList();
       renderInsights();
+      
+      // Show rate limit warning if low
+      if (apiResponse.rateLimitRemaining !== undefined && apiResponse.rateLimitRemaining < 5) {
+        showToast(`⚠️ ${apiResponse.rateLimitRemaining} API calls remaining`);
+      }
     }, delay);
   }
 
