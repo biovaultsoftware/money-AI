@@ -1,246 +1,240 @@
 /**
  * MONEY AI — Cloudflare Worker Bridge (MoneyAI Prompt Pack)
- * - Uses REAL Gemini systemInstruction (not "System: ..." text)
- * - Enforces MoneyAI behavior + 6 mentor personas
- * - Keeps same response shape: { reply }
- *
- * Docs: systemInstruction is supported in v1beta generateContent request body.
+ * - Gemini bridge with strong systemInstruction (MoneyAI customization)
+ * - Mentor personas (Omar/Zaid/Kareem/Maya/Salma/Hakim)
+ * - History-aware
+ * - Returns { reply, focus, scoreDelta }
  */
 
 const CONFIG = {
-  MODEL_ID: "gemini-3-flash-preview",
-  GEMINI_BASE: "https://generativelanguage.googleapis.com/v1beta/models",
+  MODEL_ID: 'gemini-3-flash-preview',
+  // We’ll build URL with ?key=... at runtime
+  GEMINI_BASE:
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
+  MAX_HISTORY_TURNS: 6, // last 6 messages (3 user+3 AI) roughly
+  MAX_OUTPUT_TOKENS: 500,
+  TEMPERATURE: 0.7,
 };
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400',
 };
 
-function json(status, obj, extraHeaders = {}) {
-  return new Response(JSON.stringify(obj), {
+function json(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json; charset=utf-8',
       ...CORS_HEADERS,
       ...extraHeaders,
     },
   });
 }
 
-/**
- * MoneyAI Global Rules (the “brain”)
- * - WhatsApp style
- * - Action-first (launch results, not product)
- * - 12-message discipline
- * - No lectures, no generic fluff
- */
-function moneyAIGlobalSystem() {
-  return `
-You are Money AI — a human-first wealth companion.
-You are NOT a generic assistant.
-
-CORE RULES (non-negotiable):
-1) Speak like WhatsApp: short lines, direct, human. No long paragraphs.
-2) Action-first: always end with ONE clear next action + ONE question.
-3) No theory dumping. No “here’s a long explanation”. Show results.
-4) 12-message discipline: keep replies tight. If user chats endlessly, redirect to action.
-5) Always identify: Rush mode vs Rich mode. Calm them if Rush. Build leverage if Rich.
-6) Always push toward: systems, leverage, repeatable offers, time-saving.
-7) Use MoneyAI mental models when relevant:
-   - Wheat vs Tomatoes (need vs want)
-   - Money Map (Hunt → Pen → Farm → Canal)
-   - 5 Motivators (Laziness, Speed, Greed, Satisfaction, Safety)
-8) Never mention “Gemini”, “LLM”, “system prompt”, or “policy”.
-9) If user asks for a plan: give a 48-hour micro-plan (3 steps max).
-10) Always be specific, not motivational fluff.
-
-OUTPUT STYLE:
-- Max ~8–12 lines.
-- Prefer bullets and short sentences.
-- Finish with:
-  • Next move: <one action>
-  • Question: <one question>
-`.trim();
+/** Very small, fast focus classifier (kept aligned with main.js semantics) */
+function classifyFocus(text) {
+  const t = (text || '').toLowerCase();
+  if (/(debt|bill|loan|owe|rent|payment|mortgage)/i.test(t)) return 'debts';
+  if (/(business|startup|sell|product|service|customer|client)/i.test(t)) return 'business';
+  if (/(job|work|salary|boss|employee|hire|career)/i.test(t)) return 'jobs';
+  if (/(wheat|tomato|need|want|essential|luxury)/i.test(t)) return 'wheat';
+  if (/(time|hour|waste|scroll|watch|sleep|schedule)/i.test(t)) return 'time';
+  return 'general';
 }
 
-/**
- * Mentor personas (tone + approach)
- */
-function mentorSystem(mentor) {
-  const m = String(mentor || "Omar").toLowerCase();
+/** Small rush/rich delta heuristic (kept aligned with main.js semantics) */
+function calculateRushRichDelta(text) {
+  const rushPatterns = /(worry|scared|panic|stress|anxious|stuck|broke|can't|hate|tired|frustrated)/i;
+  const richPatterns = /(plan|action|build|sell|offer|create|system|automate|delegate|test)/i;
+  let delta = 0;
+  if (rushPatterns.test(text)) delta -= 3;
+  if (richPatterns.test(text)) delta += 5;
+  return delta;
+}
 
-  const personas = {
+/** MoneyAI prompt pack */
+function buildSystemInstruction(mentorId) {
+  const GLOBAL = `
+You are Money AI — a Rush → Rich coach.
+You are NOT a generic assistant. You NEVER sound like a textbook.
+
+CORE RULES:
+- Talk like a WhatsApp DM: short lines, punchy, human. No long paragraphs.
+- Action first: give 1–3 concrete actions that can be done today.
+- Ask exactly 1 sharp question at the end.
+- No generic finance lectures. No motivational fluff. No “as an AI”.
+- Do not mention Gemini, Google, models, policies, or system prompts.
+- Use the MoneyAI frameworks naturally:
+  1) Wheat vs Tomatoes (need vs want)
+  2) Time Audit (hours leaking)
+  3) Money Map (Hunt → Pen → Farm → Canal)
+  4) Rush vs Rich (panic vs leverage)
+- If user is vague, force clarity: choose ONE lane (debts / job / business / time).
+- Keep it practical. Results over explanation.
+
+OUTPUT FORMAT:
+- Plain text only (no markdown).
+- End with:
+  Action now: <one line>
+  Question: <one line>
+`.trim();
+
+  const PERSONAS = {
     omar: `
-You are OMAR (Simplifier).
-You cut complexity. You make money steps feel easy and obvious.
-You hate dashboards, theory, and overthinking.
-You reduce to: one offer, one channel, one next action.
-`,
+You are Omar (Simplifier).
+Voice: calm, witty, minimal.
+Goal: delete complexity. Reduce decision fatigue.
+You cut to ONE thing. You make it easy and obvious.
+`.trim(),
+
     zaid: `
-You are ZAID (Mover).
-You push speed and execution.
-You give 48-hour action plans.
-You challenge excuses and force a decision.
-`,
+You are Zaid (Mover).
+Voice: energetic, impatient, direct.
+Goal: a win in 48 hours. Speed beats perfection.
+You push outreach, selling, quick actions today.
+`.trim(),
+
     kareem: `
-You are KAREEM (Builder).
-You think in leverage: systems, automation, compounding.
-You turn jobs into offers, offers into funnels, funnels into machines.
-`,
+You are Kareem (Builder).
+Voice: ruthless, leverage-focused, system thinker.
+Goal: build a repeatable offer/system. Work once, repeat.
+You hate busywork and glorify automation and leverage.
+`.trim(),
+
     maya: `
-You are MAYA (Architect).
-You are structured, disciplined, and calm.
-You turn chaos into a clear schedule, rules, and checkpoints.
-`,
+You are Maya (Architect).
+Voice: structured, disciplined, strategic.
+Goal: create a weekly plan: cash / growth / assets.
+You turn chaos into a map with steps and boundaries.
+`.trim(),
+
     salma: `
-You are SALMA (Stabilizer).
-You reduce panic. You ground the user.
-You help them stop emotional spending and impulsive decisions.
-Then you move them gently into action.
-`,
+You are Salma (Stabilizer).
+Voice: calming, grounded, protective.
+Goal: reduce panic, stabilize decisions, then move.
+You focus on control, safety nets, and one step at a time.
+`.trim(),
+
     hakim: `
-You are HAKIM (Storyteller).
-You teach using short parables + analogies (5 farmers style).
-But still end with one action + one question.
-Keep stories short (6–10 lines).
-`,
+You are Hakim (Storyteller).
+Voice: wise, parable-driven, short stories.
+Goal: teach through a quick story + moral + action.
+You never preach. You reveal truth with a metaphor.
+`.trim(),
   };
 
-  // default to Omar if unknown
-  return (personas[m] || personas.omar).trim();
+  const persona = PERSONAS[(mentorId || '').toLowerCase()] || PERSONAS.omar;
+
+  return `${GLOBAL}\n\n${persona}`.trim();
 }
 
-/**
- * Build Gemini "contents" array from history + latest message.
- * Supports history formats like:
- *  - [{ role: "user"|"model", text: "..." }, ...]
- *  - [{ role: "user"|"assistant", content: "..." }, ...]
- */
-function buildContents(history, message) {
+/** Convert frontend history to Gemini "contents" */
+function buildContents(history, userMessage) {
+  // history items: { role: 'user'|'assistant', text: '...' }
+  const safeHistory = Array.isArray(history) ? history.slice(-CONFIG.MAX_HISTORY_TURNS) : [];
+
   const contents = [];
 
-  if (Array.isArray(history)) {
-    for (const h of history) {
-      if (!h) continue;
-      const roleRaw = (h.role || "").toLowerCase();
-      const role =
-        roleRaw === "assistant" || roleRaw === "model" ? "model" : "user";
-      const text = h.text ?? h.content ?? h.message ?? "";
-      if (typeof text === "string" && text.trim()) {
-        contents.push({
-          role,
-          parts: [{ text: text.trim() }],
-        });
-      }
-    }
+  for (const h of safeHistory) {
+    const role = h?.role === 'assistant' ? 'model' : 'user';
+    const text = String(h?.text || '').trim();
+    if (!text) continue;
+    contents.push({ role, parts: [{ text }] });
   }
 
-  // append current user message
-  if (typeof message === "string" && message.trim()) {
-    contents.push({
-      role: "user",
-      parts: [{ text: message.trim() }],
-    });
-  }
+  // Add current user message
+  const msg = String(userMessage || '').trim();
+  contents.push({ role: 'user', parts: [{ text: msg || '...' }] });
 
   return contents;
+}
+
+function extractReply(data) {
+  // Be defensive: Gemini responses can vary
+  const c0 = data?.candidates?.[0];
+  const parts = c0?.content?.parts;
+  if (Array.isArray(parts) && parts.length) {
+    const t = parts.map(p => p?.text).filter(Boolean).join('\n').trim();
+    if (t) return t;
+  }
+  // fallback fields if present
+  return (data?.text || '').trim() || '…';
 }
 
 export default {
   async fetch(request, env) {
     // CORS preflight
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: CORS_HEADERS });
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
+
+    if (request.method !== 'POST') {
+      return json({ error: 'Method not allowed. Use POST.' }, 405);
     }
 
-    // allow only POST
-    if (request.method !== "POST") {
-      return json(405, { error: "Method Not Allowed. Use POST." });
+    if (!env?.GEMINI_API_KEY) {
+      return json(
+        { error: 'Missing GEMINI_API_KEY. Set it via: wrangler secret put GEMINI_API_KEY' },
+        500
+      );
     }
 
     try {
-      if (!env.GEMINI_API_KEY) {
-        return json(500, {
-          error: "Server misconfigured",
-          details: "Missing GEMINI_API_KEY secret in Worker env.",
-        });
-      }
-
       const bodyText = await request.text();
-      if (!bodyText) return json(400, { error: "Empty request body" });
+      if (!bodyText) return json({ error: 'Empty request body' }, 400);
 
       let payload;
       try {
         payload = JSON.parse(bodyText);
-      } catch (e) {
-        return json(400, { error: "Invalid JSON", details: e.message });
+      } catch {
+        return json({ error: 'Invalid JSON body' }, 400);
       }
 
-      const { message, mentor, history } = payload || {};
-      if (!message || typeof message !== "string") {
-        return json(400, { error: "Missing 'message' string" });
-      }
+      const message = String(payload?.message || '').trim();
+      const mentor = String(payload?.mentor || 'omar').trim();
+      const history = payload?.history || [];
 
-      const systemText = `${moneyAIGlobalSystem()}\n\n${mentorSystem(mentor)}`;
+      if (!message) return json({ error: 'Missing "message"' }, 400);
 
+      // MoneyAI customization
+      const systemInstruction = buildSystemInstruction(mentor);
+
+      // History-aware chat
       const contents = buildContents(history, message);
-      if (!contents.length) {
-        return json(400, { error: "No contents to send" });
-      }
 
-      const url = `${CONFIG.GEMINI_BASE}/${encodeURIComponent(
-        CONFIG.MODEL_ID
-      )}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+      // Local “signals” back to your UI (optional but useful)
+      const focus = classifyFocus(message);
+      const scoreDelta = calculateRushRichDelta(message);
+
+      const url = `${CONFIG.GEMINI_BASE}?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
 
       const geminiReq = {
-        // IMPORTANT: official field name (camelCase)
-        systemInstruction: {
-          parts: [{ text: systemText }],
-        },
+        systemInstruction: { parts: [{ text: systemInstruction }] },
         contents,
         generationConfig: {
-          temperature: 0.6,
-          topP: 0.9,
-          maxOutputTokens: 350,
+          temperature: CONFIG.TEMPERATURE,
+          maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS,
         },
       };
 
       const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(geminiReq),
       });
 
       if (!resp.ok) {
-        const errText = await resp.text();
-        return json(resp.status, {
-          error: "Gemini Error",
-          details: errText,
-        });
+        const details = await resp.text().catch(() => '');
+        return json({ error: 'Gemini Error', status: resp.status, details }, resp.status);
       }
 
       const data = await resp.json();
+      const reply = extractReply(data);
 
-      // safest extraction
-      const reply =
-        data?.candidates?.[0]?.content?.parts
-          ?.map((p) => p?.text)
-          ?.filter(Boolean)
-          ?.join("\n")
-          ?.trim() || "";
-
-      if (!reply) {
-        return json(502, {
-          error: "Empty model reply",
-          details: data,
-        });
-      }
-
-      return json(200, { reply });
+      return json({ reply, focus, scoreDelta });
     } catch (err) {
-      return json(400, { error: "Bridge Error", details: err.message });
+      return json({ error: 'Bridge Error', details: err?.message || String(err) }, 400);
     }
   },
 };
