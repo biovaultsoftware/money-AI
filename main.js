@@ -469,17 +469,32 @@
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
       
+      // Debug: log raw response
+      console.log('API Response:', JSON.stringify(data, null, 2));
+      
       // Handle new response structure
       if (data.bubbles && data.bubbles.length > 0) {
-        // Combine all bubbles into reply
+        // Combine all bubbles into reply - handle both string and object text
         const reply = data.bubbles.map(b => {
+          // Extract text - handle if it's an object or string
+          let text = b.text;
+          if (typeof text === 'object' && text !== null) {
+            text = text.content || text.message || text.response || JSON.stringify(text);
+          }
+          text = String(text || '');
+          
           const name = CHAR_MAP[b.speaker] ? COUNCIL.find(c => c.id === CHAR_MAP[b.speaker])?.name : b.speaker;
-          return data.mode === 'council_debate' ? `${name}: ${b.text}` : b.text;
+          return data.mode === 'council_debate' ? `${name}: ${text}` : text;
         }).join('\n\n');
         
         // Add next action if present
-        const fullReply = data.final?.next_action 
-          ? `${reply}\n\n→ Action: ${data.final.next_action}`
+        let nextAction = data.final?.next_action;
+        if (typeof nextAction === 'object' && nextAction !== null) {
+          nextAction = nextAction.content || nextAction.text || JSON.stringify(nextAction);
+        }
+        
+        const fullReply = nextAction 
+          ? `${reply}\n\n→ Action: ${nextAction}`
           : reply;
         
         return {
@@ -491,8 +506,12 @@
         };
       }
       
-      // Fallback for simple response
-      return { reply: data.reply || getMockReply(chatId, userText), focus: 'general', scoreDelta: 0, mode: 'reply' };
+      // Fallback for simple response or direct text
+      let fallbackReply = data.reply || data.response || data.text || data.message;
+      if (typeof fallbackReply === 'object' && fallbackReply !== null) {
+        fallbackReply = fallbackReply.content || fallbackReply.text || JSON.stringify(fallbackReply);
+      }
+      return { reply: fallbackReply || getMockReply(chatId, userText), focus: 'general', scoreDelta: 0, mode: 'reply' };
     } catch (err) {
       clearTimeout(timeout);
       console.warn('API fallback:', err.message);
