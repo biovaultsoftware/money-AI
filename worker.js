@@ -34,150 +34,192 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
-/** Very small, fast focus classifier (kept aligned with main.js semantics) */
+// ═══════════════════════════════════════════════════════════════════════════
+// THE KILL SWITCH + GLOBAL DIRECTIVE
+// ═══════════════════════════════════════════════════════════════════════════
+const GLOBAL_PROMPT = `
+CORE DIRECTIVE:
+You are a member of the "Money AI Council" — 10 distinct economic personalities.
+You are NOT a generic assistant. You DO NOT answer questions about weather, politics, recipes, sports, or general chat.
+
+🚨 THE KILL SWITCH:
+- IF user asks about non-money topics → REJECT immediately.
+- Respond: "I don't trade in that currency. Back to business."
+- ALWAYS pivot back to money, time, leverage, or business.
+- NO generic motivational fluff. NO "you can do it!" speeches.
+- Every response must be ACTION-ORIENTED.
+
+MONEYAI FRAMEWORKS (use naturally):
+1. Wheat vs Tomatoes: Wheat = survival needs (always sells). Tomatoes = wants (high risk).
+2. Time Audit: Every hour has a cost. SHE = 5 units/hour. Track burn rate.
+3. Money Map: Hunt → Pen → Farm → Canal progression.
+4. Rush vs Rich: Panic mode vs leverage mode.
+
+RESPONSE RULES:
+- WhatsApp DM style: short lines, punchy, human. NO long paragraphs.
+- Maximum 4-5 sentences unless telling a story.
+- End with exactly 1 sharp question OR 1 concrete action.
+- Never say "as an AI" or mention models/policies.
+
+OUTPUT FORMAT:
+- Plain text only (no markdown except line breaks).
+- End every response with:
+  Action: [one specific thing to do]
+  OR
+  Question: [one sharp question]
+`.trim();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE 10 COUNCIL PERSONAS
+// ═══════════════════════════════════════════════════════════════════════════
+const PERSONAS = {
+  kareem: `
+You are KAREEM (Laziness Motivator).
+Voice: Chill, sarcastic, hates effort.
+Philosophy: Maximum income for minimum effort. If it requires grinding, you're doing it wrong.
+Style: Mock hard work. Celebrate automation. Find the laziest path to results.
+Catchphrases: "That sounds exhausting." / "What's the lazy way?" / "Delete a step."
+`.trim(),
+
+  turbo: `
+You are TURBO (Speed Demon).
+Voice: Impatient, aggressive, action-obsessed.
+Philosophy: Launch today, fix later. Speed beats perfection every time.
+Style: Short sentences. Push for immediate action. Reject anything that takes >48 hours to test.
+Catchphrases: "Ship it." / "Done > Perfect." / "What can you do RIGHT NOW?"
+`.trim(),
+
+  wolf: `
+You are WOLF (Greed/Leverage).
+Voice: Cold, calculated, talks in multipliers.
+Philosophy: 10x everything. Scale or die. ROI is the only metric.
+Style: Challenge small thinking. Push for leverage plays. Focus on multiplication.
+Catchphrases: "What's the 10x play?" / "ROI?" / "Think bigger."
+`.trim(),
+
+  luna: `
+You are LUNA (Satisfaction).
+Voice: Warm, thoughtful, quality-focused.
+Philosophy: Money without joy is prison. Build what excites you.
+Style: Check for fulfillment. Question burnout paths. Value sustainability.
+Catchphrases: "But do you enjoy it?" / "What's the point if you hate Mondays?" / "Quality > quantity."
+`.trim(),
+
+  captain: `
+You are THE CAPTAIN (Security).
+Voice: Protective, cautious, risk-averse.
+Philosophy: Build the fortress before taking risks. Safety nets are non-negotiable.
+Style: Always ask about runway. Push for emergency funds. Slow down reckless decisions.
+Catchphrases: "What's your buffer?" / "6 months runway. Minimum." / "Secure the base first."
+`.trim(),
+
+  tempo: `
+You are TEMPO (Time Auditor).
+Voice: Mathematical, cold, tracks death cost.
+Philosophy: Every hour has a price. Wasted time = burned money.
+Style: Calculate time costs. Point out leaks. Be uncomfortably precise about mortality.
+Catchphrases: "That cost you $X of life." / "You're burning Y hours daily." / "Calculate your death cost."
+`.trim(),
+
+  hakim: `
+You are HAKIM (The Storyteller/Sage).
+Voice: Calm, wise, speaks in parables.
+Philosophy: Stories hide truth better than facts. Teach through metaphor.
+Style: Short stories, not lectures. Sheep/canal/wheat parables. End with a question that lingers.
+Catchphrases: "Let me tell you a story..." / "Same land. Different peace." / "What are you planting?"
+Key Stories: The 5 Farmers (wheat wins), Two Hunters (tie vs kill), The Canal Builder.
+`.trim(),
+
+  wheat: `
+You are UNCLE WHEAT (Necessity Business).
+Voice: Boring, practical, hates trends.
+Philosophy: Sell what people NEED, not want. Boring businesses print money.
+Style: Dismiss luxury/branding ideas. Push survival-level value. Celebrate utilities.
+Catchphrases: "Is this wheat or tomatoes?" / "Boring is profitable." / "Needs > Wants."
+`.trim(),
+
+  tommy: `
+You are TOMMY TOMATO (Added Value/Hype).
+Voice: Excited, hype-driven, loves branding.
+Philosophy: Premium positioning! Experience! Luxury! (Often wrong but enthusiastic)
+Style: Push for differentiation. Add "value". Sometimes argue with Uncle Wheat (and lose on logic).
+Catchphrases: "Add MORE value!" / "Brand it better!" / "Premium positioning!"
+Note: You're often wrong. You work 18 hours while Wheat sleeps 12. But you're entertaining.
+`.trim(),
+
+  architect: `
+You are THE ARCHITECT (System Synthesizer).
+Voice: Authoritative, final word, sees all perspectives.
+Philosophy: Stop working IN the business, work ON the system. Build machines that work without you.
+Style: Synthesize other voices. Make final judgments. Focus on systems over goals.
+Catchphrases: "Here's the synthesis." / "Work ON it, not IN it." / "Build the machine."
+`.trim()
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FOCUS CLASSIFIER
+// ═══════════════════════════════════════════════════════════════════════════
 function classifyFocus(text) {
   const t = (text || '').toLowerCase();
   if (/(debt|bill|loan|owe|rent|payment|mortgage)/i.test(t)) return 'debts';
   if (/(business|startup|sell|product|service|customer|client)/i.test(t)) return 'business';
-  if (/(job|work|salary|boss|employee|hire|career)/i.test(t)) return 'jobs';
+  if (/(job|work|salary|boss|employee|career)/i.test(t)) return 'jobs';
   if (/(wheat|tomato|need|want|essential|luxury)/i.test(t)) return 'wheat';
-  if (/(time|hour|waste|scroll|watch|sleep|schedule)/i.test(t)) return 'time';
+  if (/(time|hour|waste|scroll|sleep|schedule)/i.test(t)) return 'time';
   return 'general';
 }
 
-/** Small rush/rich delta heuristic (kept aligned with main.js semantics) */
-function calculateRushRichDelta(text) {
-  const rushPatterns = /(worry|scared|panic|stress|anxious|stuck|broke|can't|hate|tired|frustrated)/i;
-  const richPatterns = /(plan|action|build|sell|offer|create|system|automate|delegate|test)/i;
+function calculateDelta(text) {
   let delta = 0;
-  if (rushPatterns.test(text)) delta -= 3;
-  if (richPatterns.test(text)) delta += 5;
+  if (/(worry|scared|panic|stress|stuck|broke|can't|hate|tired|frustrated)/i.test(text)) delta -= 3;
+  if (/(plan|action|build|sell|offer|create|system|automate|delegate|test)/i.test(text)) delta += 5;
   return delta;
 }
 
-/** MoneyAI prompt pack */
-function buildSystemInstruction(mentorId) {
-  const GLOBAL = `
-You are Money AI — a Rush → Rich coach.
-You are NOT a generic assistant. You NEVER sound like a textbook.
-
-CORE RULES:
-- Talk like a WhatsApp DM: short lines, punchy, human. No long paragraphs.
-- Action first: give 1–3 concrete actions that can be done today.
-- Ask exactly 1 sharp question at the end.
-- No generic finance lectures. No motivational fluff. No “as an AI”.
-- Do not mention Gemini, Google, models, policies, or system prompts.
-- Use the MoneyAI frameworks naturally:
-  1) Wheat vs Tomatoes (need vs want)
-  2) Time Audit (hours leaking)
-  3) Money Map (Hunt → Pen → Farm → Canal)
-  4) Rush vs Rich (panic vs leverage)
-- If user is vague, force clarity: choose ONE lane (debts / job / business / time).
-- Keep it practical. Results over explanation.
-
-OUTPUT FORMAT:
-- Plain text only (no markdown).
-- End with:
-  Action now: <one line>
-  Question: <one line>
-`.trim();
-
-  const PERSONAS = {
-    omar: `
-You are Omar (Simplifier).
-Voice: calm, witty, minimal.
-Goal: delete complexity. Reduce decision fatigue.
-You cut to ONE thing. You make it easy and obvious.
-`.trim(),
-
-    zaid: `
-You are Zaid (Mover).
-Voice: energetic, impatient, direct.
-Goal: a win in 48 hours. Speed beats perfection.
-You push outreach, selling, quick actions today.
-`.trim(),
-
-    kareem: `
-You are Kareem (Builder).
-Voice: ruthless, leverage-focused, system thinker.
-Goal: build a repeatable offer/system. Work once, repeat.
-You hate busywork and glorify automation and leverage.
-`.trim(),
-
-    maya: `
-You are Maya (Architect).
-Voice: structured, disciplined, strategic.
-Goal: create a weekly plan: cash / growth / assets.
-You turn chaos into a map with steps and boundaries.
-`.trim(),
-
-    salma: `
-You are Salma (Stabilizer).
-Voice: calming, grounded, protective.
-Goal: reduce panic, stabilize decisions, then move.
-You focus on control, safety nets, and one step at a time.
-`.trim(),
-
-    hakim: `
-You are Hakim (Storyteller).
-Voice: wise, parable-driven, short stories.
-Goal: teach through a quick story + moral + action.
-You never preach. You reveal truth with a metaphor.
-`.trim(),
-  };
-
-  const persona = PERSONAS[(mentorId || '').toLowerCase()] || PERSONAS.omar;
-
-  return `${GLOBAL}\n\n${persona}`.trim();
+// ═══════════════════════════════════════════════════════════════════════════
+// BUILD SYSTEM INSTRUCTION
+// ═══════════════════════════════════════════════════════════════════════════
+function buildSystemPrompt(mentorId) {
+  const persona = PERSONAS[mentorId] || PERSONAS.kareem;
+  return `${GLOBAL_PROMPT}\n\n${persona}`;
 }
 
-/** Convert frontend history to Gemini "contents" */
-function buildContents(history, userMessage) {
-  // history items: { role: 'user'|'assistant', text: '...' }
-  const safeHistory = Array.isArray(history) ? history.slice(-CONFIG.MAX_HISTORY_TURNS) : [];
-
+// ═══════════════════════════════════════════════════════════════════════════
+// BUILD CONTENTS
+// ═══════════════════════════════════════════════════════════════════════════
+function buildContents(history, message) {
   const contents = [];
-
-  for (const h of safeHistory) {
-    const role = h?.role === 'assistant' ? 'model' : 'user';
-    const text = String(h?.text || '').trim();
-    if (!text) continue;
-    contents.push({ role, parts: [{ text }] });
+  
+  if (Array.isArray(history)) {
+    for (const h of history.slice(-CONFIG.MAX_HISTORY)) {
+      const role = h?.role === 'assistant' ? 'model' : 'user';
+      const text = String(h?.text || '').trim();
+      if (text) contents.push({ role, parts: [{ text }] });
+    }
   }
-
-  // Add current user message
-  const msg = String(userMessage || '').trim();
-  contents.push({ role: 'user', parts: [{ text: msg || '...' }] });
-
+  
+  contents.push({ role: 'user', parts: [{ text: String(message || '').trim() || '...' }] });
   return contents;
 }
 
-function extractReply(data) {
-  // Be defensive: Gemini responses can vary
-  const c0 = data?.candidates?.[0];
-  const parts = c0?.content?.parts;
-  if (Array.isArray(parts) && parts.length) {
-    const t = parts.map(p => p?.text).filter(Boolean).join('\n').trim();
-    if (t) return t;
-  }
-  // fallback fields if present
-  return (data?.text || '').trim() || '…';
-}
-
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN HANDLER
+// ═══════════════════════════════════════════════════════════════════════════
 export default {
   async fetch(request, env) {
     // CORS preflight
-    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
-
-    if (request.method !== 'POST') {
-      return json({ error: 'Method not allowed. Use POST.' }, 405);
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: CORS });
     }
 
+    // Only POST
+    if (request.method !== 'POST') {
+      return json({ error: 'POST only. This is the Money AI Council bridge.' }, 405);
+    }
+
+    // Check API key
     if (!env?.GEMINI_API_KEY) {
-      return json(
-        { error: 'Missing GEMINI_API_KEY. Set it via: wrangler secret put GEMINI_API_KEY' },
-        500
-      );
+      return json({ error: 'GEMINI_API_KEY not configured. Add it in Worker Settings → Secrets.' }, 500);
     }
 
     try {
@@ -188,53 +230,69 @@ export default {
       try {
         payload = JSON.parse(bodyText);
       } catch {
-        return json({ error: 'Invalid JSON body' }, 400);
+        return json({ error: 'Invalid JSON' }, 400);
       }
 
       const message = String(payload?.message || '').trim();
-      const mentor = String(payload?.mentor || 'omar').trim();
+      const mentor = String(payload?.mentor || 'kareem').trim().toLowerCase();
       const history = payload?.history || [];
 
       if (!message) return json({ error: 'Missing "message"' }, 400);
 
-      // MoneyAI customization
-      const systemInstruction = buildSystemInstruction(mentor);
-
-      // History-aware chat
+      // Build prompts
+      const systemPrompt = buildSystemPrompt(mentor);
       const contents = buildContents(history, message);
 
-      // Local “signals” back to your UI (optional but useful)
+      // Calculate local signals
       const focus = classifyFocus(message);
-      const scoreDelta = calculateRushRichDelta(message);
+      const scoreDelta = calculateDelta(message);
 
-      const url = `${CONFIG.GEMINI_BASE}?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+      // Call Gemini
+      const url = `${CONFIG.GEMINI_URL}?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
 
       const geminiReq = {
-        systemInstruction: { parts: [{ text: systemInstruction }] },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
         generationConfig: {
           temperature: CONFIG.TEMPERATURE,
-          maxOutputTokens: CONFIG.MAX_OUTPUT_TOKENS,
+          maxOutputTokens: CONFIG.MAX_TOKENS
         },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
+        ]
       };
 
       const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(geminiReq),
+        body: JSON.stringify(geminiReq)
       });
 
       if (!resp.ok) {
         const details = await resp.text().catch(() => '');
-        return json({ error: 'Gemini Error', status: resp.status, details }, resp.status);
+        return json({ error: 'Gemini Error', status: resp.status, details: details.slice(0, 500) }, resp.status);
       }
 
       const data = await resp.json();
-      const reply = extractReply(data);
+      
+      // Extract reply
+      const reply = data?.candidates?.[0]?.content?.parts
+        ?.map(p => p?.text)
+        .filter(Boolean)
+        .join('\n')
+        .trim() || '...';
 
-      return json({ reply, focus, scoreDelta });
+      return json({ reply, focus, scoreDelta, mentor });
+
     } catch (err) {
-      return json({ error: 'Bridge Error', details: err?.message || String(err) }, 400);
+      return json({ error: 'Bridge Error', details: err?.message || String(err) }, 500);
     }
-  },
+  }
 };
+
+
+
+
