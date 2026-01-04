@@ -443,10 +443,18 @@
     return delta;
   }
 
+  // Character name mapping (API uses uppercase, frontend uses lowercase)
+  const CHAR_MAP = {
+    'KAREEM': 'kareem', 'TURBO': 'turbo', 'WOLF': 'wolf', 'LUNA': 'luna',
+    'THE_CAPTAIN': 'captain', 'TEMPO': 'tempo', 'HAKIM': 'hakim',
+    'UNCLE_WHEAT': 'wheat', 'TOMMY_TOMATO': 'tommy', 'THE_ARCHITECT': 'architect'
+  };
+  const CHAR_MAP_REVERSE = Object.fromEntries(Object.entries(CHAR_MAP).map(([k, v]) => [v, k]));
+
   // API
   async function callAPI(chatId, userText, history = []) {
     if (!CONFIG.USE_REAL_API) {
-      return { reply: getMockReply(chatId, userText), focus: 'general', scoreDelta: calculateDelta(userText) };
+      return { reply: getMockReply(chatId, userText), focus: 'general', scoreDelta: calculateDelta(userText), mode: 'reply' };
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
@@ -454,21 +462,41 @@
       const res = await fetch(CONFIG.WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mentor: chatId,
-          message: userText,
-          history: history.slice(-6).map(m => ({ role: m.dir === 'out' ? 'user' : 'assistant', text: m.text }))
-        }),
+        body: JSON.stringify({ text: userText }),
         signal: controller.signal
       });
       clearTimeout(timeout);
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
-      return { reply: data.reply || getMockReply(chatId, userText), focus: data.focus || 'general', scoreDelta: data.scoreDelta || 0 };
+      
+      // Handle new response structure
+      if (data.bubbles && data.bubbles.length > 0) {
+        // Combine all bubbles into reply
+        const reply = data.bubbles.map(b => {
+          const name = CHAR_MAP[b.speaker] ? COUNCIL.find(c => c.id === CHAR_MAP[b.speaker])?.name : b.speaker;
+          return data.mode === 'council_debate' ? `${name}: ${b.text}` : b.text;
+        }).join('\n\n');
+        
+        // Add next action if present
+        const fullReply = data.final?.next_action 
+          ? `${reply}\n\n→ Action: ${data.final.next_action}`
+          : reply;
+        
+        return {
+          reply: fullReply,
+          focus: classifyFocus([{ text: userText }]),
+          scoreDelta: data.final?.decision === 'ACCEPT' ? 5 : -2,
+          mode: data.mode || 'reply',
+          character: CHAR_MAP[data.selected_character] || chatId
+        };
+      }
+      
+      // Fallback for simple response
+      return { reply: data.reply || getMockReply(chatId, userText), focus: 'general', scoreDelta: 0, mode: 'reply' };
     } catch (err) {
       clearTimeout(timeout);
       console.warn('API fallback:', err.message);
-      return { reply: getMockReply(chatId, userText), focus: 'general', scoreDelta: calculateDelta(userText) };
+      return { reply: getMockReply(chatId, userText), focus: 'general', scoreDelta: calculateDelta(userText), mode: 'reply' };
     }
   }
 
@@ -525,9 +553,15 @@
     await new Promise(r => setTimeout(r, delay));
     hideTyping();
 
-    const member = COUNCIL.find(c => c.id === chatId);
+    // Determine which character responded
+    const responderId = response.character || chatId;
+    const member = COUNCIL.find(c => c.id === responderId) || COUNCIL.find(c => c.id === chatId);
+    
+    // Tag based on mode
+    const tag = response.mode === 'council_debate' ? '🏛️ Council' : member?.name;
+
     await addMessage(chatId, 'in', response.reply, {
-      tag: member?.name,
+      tag: tag,
       chips: [{ action: 'next', label: '→ Next step' }, { action: 'audit', label: '⏱️ Time Audit' }]
     });
 
@@ -562,11 +596,11 @@
 
   function handleChip(action) {
     const prompts = {
-      audit: "Do a time audit on my typical day.",
-      wheat: "Is my idea wheat or tomatoes?",
-      map: "Help me build my Money Map.",
-      council: "I want the full Council's opinion.",
-      next: "What's my next concrete action?"
+      audit: "I need a time audit on my typical day.",
+      wheat: "Is my idea wheat or tomatoes? Test the necessity.",
+      map: "Help me plan my Money Map system.",
+      council: "I want a debate from the full Council.",
+      next: "What's my next concrete action to scale?"
     };
     if (prompts[action]) {
       DOM.msgInput.value = prompts[action];
@@ -591,7 +625,21 @@
   async function summonCouncil() {
     const chatId = state.activeChatId;
     if (!chatId) return;
-    const response = `🏛️ THE COUNCIL SPEAKS:
+    
+    // Get last user message for context
+    const msgs = state.messages.get(chatId) || [];
+    const lastUserMsg = [...msgs].reverse().find(m => m.dir === 'out');
+    const context = lastUserMsg?.text || "What should I do with my money?";
+    
+    showTyping();
+    
+    // Call API with debate trigger
+    const response = await callAPI(chatId, `debate: ${context}`, msgs);
+    
+    hideTyping();
+    
+    // Use API response or fallback
+    const fallbackResponse = `🏛️ THE COUNCIL SPEAKS:
 
 Kareem: "Too much work. Automate it."
 Turbo: "Ship TODAY. Fix later."
@@ -606,7 +654,8 @@ Architect: "Build the system."
 Hakim: "Two farmers. Same field. Only one slept well."
 
 → Which voice will you follow?`;
-    await addMessage(chatId, 'in', response, { tag: 'Council' });
+
+    await addMessage(chatId, 'in', response.reply || fallbackResponse, { tag: '🏛️ Council' });
     renderThread();
     showToast('🏛️ Council assembled');
   }
