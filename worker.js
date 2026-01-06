@@ -1,5 +1,5 @@
 /**
- * MONEY AI COUNCIL — FIXED WORKER v5 (Language + QC-safe + Truth-Gated + Validation)
+ * MONEY AI COUNCIL â€” FIXED WORKER v5 (Language + QC-safe + Truth-Gated + Validation)
  * ------------------------------------------------------------------------------
  * Fixes:
  * 1) Language detection: replies in user's language (Arabic/English/mixed)
@@ -16,9 +16,9 @@
 
 export default {
   async fetch(request, env) {
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // CORS
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
@@ -29,9 +29,9 @@ export default {
       });
     }
 
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Parse input
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const url = new URL(request.url);
     let userText = url.searchParams.get("text");
 
@@ -42,22 +42,22 @@ export default {
       } catch (_) {}
     }
 
-    if (!userText) userText = "Explain Rush → Rich in one practical example.";
+    if (!userText) userText = "Explain Rush â†’ Rich in one practical example.";
 
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Language detect (fast + deterministic)
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const detectedLang = detectUserLanguage(userText);
 
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Route persona
-    // ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const router = runRoutingLogic(userText);
 
     try {
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // STEP 0: QUERY REWRITE (tool gating + normalized query + language)
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const rewrite = await runQueryRewrite(env, userText, detectedLang);
 
       const normalizedQuery = rewrite?.normalized_query || userText;
@@ -67,18 +67,18 @@ export default {
       // language from rewrite (preferred), else fallback to detectedLang
       const userLanguage = rewrite?.user_language || detectedLang;
 
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // STEP 1: INTERNAL RAG (Vectorize optional)
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let internalExcerptsBlock = "";
       if (useInternalRag) {
         const internalExcerpts = await retrieveInternalExcerpts(env, normalizedQuery, 8);
         internalExcerptsBlock = formatInternalExcerpts(internalExcerpts);
       }
 
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // STEP 2: WEB SEARCH (ONLY if rewrite says so)
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let webContextBlock = "";
       if (useWebSearch && env.TAVILY_API_KEY) {
         try {
@@ -89,9 +89,9 @@ export default {
         }
       }
 
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // STEP 3: BUILD SINGLE SYSTEM PROMPT
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const systemPrompt = buildMoneyAIGenerationSystemPrompt({
         personaKey: router.character,
         personaText: PERSONAS[router.character],
@@ -100,9 +100,9 @@ export default {
         userLanguage,
       });
 
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // STEP 4: CALL MODEL + VALIDATE + AUTO-RETRY (QC appended to SYSTEM ONLY)
-      // ─────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const result = await generateWithValidation(env, {
         model: MODEL_GENERATION,
         systemPrompt,
@@ -125,15 +125,15 @@ export default {
   },
 };
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * MODELS
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const MODEL_REWRITE = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MODEL_GENERATION = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * LANGUAGE DETECTION
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function detectUserLanguage(text) {
   const s = String(text || "");
   // Arabic Unicode ranges (basic + extended)
@@ -148,17 +148,17 @@ function localizeAction(actionEn, lang) {
   if (lang === "ar") {
     // keep it simple Arabic
     // (we do not auto-translate long text; just provide a usable Arabic fallback)
-    if (actionEn.toLowerCase().includes("try again")) return "أعد المحاولة بسؤال أقصر وواضح.";
-    return "نفّذ المهمة خلال 48 ساعة وارجع بالنتيجة.";
+    if (actionEn.toLowerCase().includes("try again")) return "Ø£Ø¹Ø¯ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© Ø¨Ø³Ø¤Ø§Ù„ Ø£Ù‚ØµØ± ÙˆÙˆØ§Ø¶Ø­.";
+    return "Ù†ÙÙ‘Ø° Ø§Ù„Ù…Ù‡Ù…Ø© Ø®Ù„Ø§Ù„ 48 Ø³Ø§Ø¹Ø© ÙˆØ§Ø±Ø¬Ø¹ Ø¨Ø§Ù„Ù†ØªÙŠØ¬Ø©.";
   }
   return actionEn;
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * QUERY REWRITE PROMPT
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const QUERY_REWRITE_PROMPT = `
-You are Money AI — Query Rewrite Engine.
+You are Money AI â€” Query Rewrite Engine.
 
 You do NOT answer the user.
 You output retrieval-ready JSON.
@@ -170,8 +170,8 @@ CRITICAL LANGUAGE RULE:
 - Do NOT translate Arabic to English.
 
 TOOL POLICY:
-- use_internal_rag = true for anything involving business decisions, ideas, execution, Rush→Rich, Wheat/Tomato, SHE, ECF, motivators.
-- use_web_search = true ONLY if fresh external facts are needed (licenses, permits, regulations, prices, addresses, current rules, “today/latest”, official requirements).
+- use_internal_rag = true for anything involving business decisions, ideas, execution, Rushâ†’Rich, Wheat/Tomato, SHE, ECF, motivators.
+- use_web_search = true ONLY if fresh external facts are needed (licenses, permits, regulations, prices, addresses, current rules, â€œtoday/latestâ€, official requirements).
 
 OUTPUT JSON ONLY. No prose.
 
@@ -187,9 +187,9 @@ Schema:
 }
 `.trim();
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * GENERATION SYSTEM PROMPT (SINGLE SYSTEM PROMPT)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function buildMoneyAIGenerationSystemPrompt({
   personaKey,
   personaText,
@@ -223,7 +223,7 @@ Your job: (1) diagnosis, (2) decision framework applied to this case, (3) ONE me
 
 ABSOLUTE RULES (NO EXCEPTIONS)
 1) NO GENERIC FILLER:
-   Never write vague phrases like “can be lucrative”, “growing demand”, “do market research”, “get necessary licenses”, “create a comprehensive business plan”.
+   Never write vague phrases like â€œcan be lucrativeâ€, â€œgrowing demandâ€, â€œdo market researchâ€, â€œget necessary licensesâ€, â€œcreate a comprehensive business planâ€.
    Every line must reduce uncertainty or force a decision.
 
 2) NO ONBOARDING / NO THERAPIST MODE:
@@ -240,20 +240,20 @@ ABSOLUTE RULES (NO EXCEPTIONS)
 
 5) ALWAYS PRODUCE A REAL ACTION:
    Every response MUST include exactly ONE action that is:
-   - time-boxed (≤ 48 hours)
+   - time-boxed (â‰¤ 48 hours)
    - binary (done / not done)
    - measurable (clear success criteria)
-   Never output “Review the advice above.”
+   Never output â€œReview the advice above.â€
 
 6) SAFETY:
    No legal/tax/regulated financial advice. Give general educational guidance + suggest consulting professionals when needed. No guarantees.
 
 MONEY AI ENGINE (apply silently)
-A) Wheat vs Tomato (Need Strength) — 1 line classification + why
-B) Leverage & ECF — identify time-for-money trap; propose ONE leverage lever
-C) Execution Friction — top 2–4 real blockers (not vague)
-D) Unit Math — 2–5 decision numbers; if unknown, fast estimation steps
-E) 48-hour move — force momentum
+A) Wheat vs Tomato (Need Strength) â€” 1 line classification + why
+B) Leverage & ECF â€” identify time-for-money trap; propose ONE leverage lever
+C) Execution Friction â€” top 2â€“4 real blockers (not vague)
+D) Unit Math â€” 2â€“5 decision numbers; if unknown, fast estimation steps
+E) 48-hour move â€” force momentum
 
 MOTIVATOR FIT
 Infer primary motivator (laziness/speed/ambition/satisfaction/security) and shape the action to be followable.
@@ -283,9 +283,9 @@ Now answer the user message. Output JSON ONLY.
 `.trim();
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * GENERATION WITH VALIDATION + AUTO-RETRY (QC SYSTEM ONLY)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 async function generateWithValidation(env, { model, systemPrompt, userMessage, personaKey }) {
   const MAX_ATTEMPTS = 3;
 
@@ -322,7 +322,7 @@ QC REGENERATION REQUIRED:
     const parsed = safeJsonParse(rawText);
     if (!parsed) {
       if (attempt < MAX_ATTEMPTS) continue;
-      return hardFallback(personaKey, "I couldn’t format JSON. Re-ask in one sentence.");
+      return hardFallback(personaKey, "I couldnâ€™t format JSON. Re-ask in one sentence.");
     }
 
     const cleaned = cleanResponseStrict(parsed, personaKey);
@@ -341,9 +341,9 @@ QC REGENERATION REQUIRED:
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * VALIDATION (updated to catch onboarding fluff + banned phrases)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function detectViolations(resultJson) {
   const text = JSON.stringify(resultJson).toLowerCase();
 
@@ -386,15 +386,15 @@ function isGoodAction(nextAction) {
   if (t.length < 18) return false;
   if (t.includes("review")) return false;
 
-  const hasTime = /(\b24\b|\b48\b|hour|hrs|اليوم|بكرا|خلال|ساعة)/i.test(t);
-  const hasMeasure = /(send|collect|write|call|visit|price|quote|calculate|list|compare|draft|build|اكتب|اجمع|اتصل|زر|قارن|احسب|ارسل)/i.test(t);
+  const hasTime = /(\b24\b|\b48\b|hour|hrs|Ø§Ù„ÙŠÙˆÙ…|Ø¨ÙƒØ±Ø§|Ø®Ù„Ø§Ù„|Ø³Ø§Ø¹Ø©)/i.test(t);
+  const hasMeasure = /(send|collect|write|call|visit|price|quote|calculate|list|compare|draft|build|Ø§ÙƒØªØ¨|Ø§Ø¬Ù…Ø¹|Ø§ØªØµÙ„|Ø²Ø±|Ù‚Ø§Ø±Ù†|Ø§Ø­Ø³Ø¨|Ø§Ø±Ø³Ù„)/i.test(t);
 
   return hasTime && hasMeasure;
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * QUERY REWRITE CALL (passes detected language as hint)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 async function runQueryRewrite(env, userText, detectedLang) {
   try {
     const hint = `User language hint: ${detectedLang}. Keep normalized_query in same language.`;
@@ -421,7 +421,7 @@ async function runQueryRewrite(env, userText, detectedLang) {
     if (/(license|permit|registration|requirements|moci|qfc|qatar)/i.test(t)) {
       parsed.use_web_search = true;
     }
-    if (/[\u0600-\u06FF]/.test(userText) && /(ترخيص|تصريح|تسجيل|متطلبات|وزارة|قطر)/.test(userText)) {
+    if (/[\u0600-\u06FF]/.test(userText) && /(ØªØ±Ø®ÙŠØµ|ØªØµØ±ÙŠØ­|ØªØ³Ø¬ÙŠÙ„|Ù…ØªØ·Ù„Ø¨Ø§Øª|ÙˆØ²Ø§Ø±Ø©|Ù‚Ø·Ø±)/.test(userText)) {
       parsed.use_web_search = true;
     }
 
@@ -431,9 +431,9 @@ async function runQueryRewrite(env, userText, detectedLang) {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────
- * VECTORIZE RAG (OPTIONAL) — truth-gated
- * ───────────────────────────────────────────────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * VECTORIZE RAG (OPTIONAL) â€” truth-gated
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 async function retrieveInternalExcerpts(env, query, topK = 8) {
   const idx = env.MONEYAI_VECTORIZE;
   if (!idx || typeof idx.query !== "function") return [];
@@ -461,15 +461,15 @@ function formatInternalExcerpts(excerpts) {
   if (!excerpts || excerpts.length === 0) return "";
   const lines = excerpts.slice(0, 8).map((x) => {
     const snippet = (x.text || "").trim().replace(/\s+/g, " ");
-    const clipped = snippet.length > 420 ? snippet.slice(0, 420) + "…" : snippet;
+    const clipped = snippet.length > 420 ? snippet.slice(0, 420) + "â€¦" : snippet;
     return `- [chunk_id: ${x.chunk_id}] [source: ${x.source}] ${clipped}`;
   });
   return `\n\nINTERNAL EXCERPTS (truth-gated):\n${lines.join("\n")}\n`;
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * WEB SEARCH (Tavily)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 async function searchWeb(query, apiKey) {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
@@ -503,9 +503,9 @@ async function searchWeb(query, apiKey) {
   return context.trim();
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * HELPERS
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function extractText(response) {
   if (typeof response === "string") return response;
   if (response?.response) return typeof response.response === "string" ? response.response : JSON.stringify(response.response);
@@ -574,9 +574,9 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * PERSONAS (voice only)
- * ───────────────────────────────────────────────────────────── */
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const PERSONAS = {
   KAREEM: `[KAREEM] Laziness/Efficiency. "If it requires effort, it's broken." Finds shortcuts.`,
   TURBO: `[TURBO] Speed/Execution. "Results by Friday." Action-oriented.`,
@@ -609,9 +609,9 @@ function runRoutingLogic(text) {
 
   // Arabic routing keywords
   if (/[\\u0600-\\u06FF]/.test(text || "")) {
-    if (/(مخاطر|آمن|امان)/.test(text)) return { character: "THE_CAPTAIN", killSwitchTriggered: false };
-    if (/(سريع|الآن|بسرعة)/.test(text)) return { character: "TURBO", killSwitchTriggered: false };
-    if (/(وقت|ساعات|تدقيق)/.test(text)) return { character: "TEMPO", killSwitchTriggered: false };
+    if (/(Ù…Ø®Ø§Ø·Ø±|Ø¢Ù…Ù†|Ø§Ù…Ø§Ù†)/.test(text)) return { character: "THE_CAPTAIN", killSwitchTriggered: false };
+    if (/(Ø³Ø±ÙŠØ¹|Ø§Ù„Ø¢Ù†|Ø¨Ø³Ø±Ø¹Ø©)/.test(text)) return { character: "TURBO", killSwitchTriggered: false };
+    if (/(ÙˆÙ‚Øª|Ø³Ø§Ø¹Ø§Øª|ØªØ¯Ù‚ÙŠÙ‚)/.test(text)) return { character: "TEMPO", killSwitchTriggered: false };
   }
 
   return { character: "THE_ARCHITECT", killSwitchTriggered: false };
