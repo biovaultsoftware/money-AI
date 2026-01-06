@@ -1,17 +1,18 @@
 /**
  * Money AI — The Council of 10
- * Production-Ready PWA
+ * Production-Ready PWA v4
+ * Features: WhatsApp-style Reels, Light/Dark Mode, Mobile Insights Drawer
  */
 (function() {
   'use strict';
 
   const CONFIG = {
-    DB_NAME: 'moneyai_v3',
+    DB_NAME: 'moneyai_v4',
     DB_VERSION: 1,
     SESSION_LIMIT: 12,
     TYPING_DELAY: 600,
     TOAST_DURATION: 2500,
-    REEL_DURATION: 8000,
+    REEL_DURATION: 6000,
     USE_REAL_API: true,
     WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev',
     API_TIMEOUT: 15000
@@ -27,7 +28,7 @@
     { id: 'tempo', name: 'Tempo', role: 'Time Auditor', status: 'You are dying. Calculate.', emoji: '⏱️', accent: '#6366f1' },
     { id: 'hakim', name: 'Hakim', role: 'Wisdom', status: 'Stories hide truth.', emoji: '📖', accent: '#8b5cf6' },
     { id: 'wheat', name: 'Uncle Wheat', role: 'Necessity', status: 'Sell what they need.', emoji: '🌾', accent: '#a3a3a3' },
-    { id: 'tommy', name: 'Tommy', role: 'Added Value', status: 'Brand it! Hype it!', emoji: '🍅', accent: '#f43f5e' },
+    { id: 'tommy', name: 'Tommy', role: 'Added Value', status: 'Brand it! Hype it!', emoji: '🅰', accent: '#f43f5e' },
     { id: 'architect', name: 'Architect', role: 'System', status: 'Work ON the system.', emoji: '🏛️', accent: '#fbbf24' }
   ];
 
@@ -97,10 +98,14 @@
     threads: new Map(),
     messages: new Map(),
     reels: new Map(),
-    prefs: { theme: 'ember', richScore: 25 },
+    prefs: { theme: 'ember', richScore: 25, darkMode: true },
     reads: { reelsRead: {} },
     isSending: false,
-    reelTimer: null
+    reelTimer: null,
+    // WhatsApp-style reels state
+    reelQueue: [],
+    currentReelIndex: 0,
+    currentReel: null
   };
 
   // DOM Cache
@@ -129,9 +134,15 @@
     DOM.sessionLimit = $('#sessionLimit');
     DOM.msgCount = $('#msgCount');
     DOM.btnCouncil = $('#btnCouncil');
+    DOM.btnInsights = $('#btnInsights');
     DOM.quickActions = $('#quickActions');
     DOM.msgInput = $('#msgInput');
     DOM.btnSend = $('#btnSend');
+    // Theme toggle
+    DOM.btnThemeToggle = $('#btnThemeToggle');
+    DOM.iconSun = $('#iconSun');
+    DOM.iconMoon = $('#iconMoon');
+    // Desktop insights
     DOM.modePill = $('#modePill');
     DOM.modeLabel = $('#modeLabel');
     DOM.rushBar = $('#rushBar');
@@ -143,8 +154,25 @@
     DOM.statUserMsgs = $('#statUserMsgs');
     DOM.statAiMsgs = $('#statAiMsgs');
     DOM.statActions = $('#statActions');
+    // Mobile insights drawer
+    DOM.insightsOverlay = $('#insightsOverlay');
+    DOM.insightsDrawer = $('#insightsDrawer');
+    DOM.modePillDrawer = $('#modePillDrawer');
+    DOM.modeLabelDrawer = $('#modeLabelDrawer');
+    DOM.rushBarDrawer = $('#rushBarDrawer');
+    DOM.richBarDrawer = $('#richBarDrawer');
+    DOM.rushValueDrawer = $('#rushValueDrawer');
+    DOM.richValueDrawer = $('#richValueDrawer');
+    DOM.focusLabelDrawer = $('#focusLabelDrawer');
+    DOM.focusDescDrawer = $('#focusDescDrawer');
+    DOM.statUserMsgsDrawer = $('#statUserMsgsDrawer');
+    DOM.statAiMsgsDrawer = $('#statAiMsgsDrawer');
+    DOM.statActionsDrawer = $('#statActionsDrawer');
+    // Reel viewer
     DOM.reelViewer = $('#reelViewer');
-    DOM.reelProgressBar = $('#reelProgressBar');
+    DOM.reelProgressContainer = $('#reelProgressContainer');
+    DOM.reelTouchPrev = $('#reelTouchPrev');
+    DOM.reelTouchNext = $('#reelTouchNext');
     DOM.reelAvatar = $('#reelAvatar');
     DOM.reelAuthor = $('#reelAuthor');
     DOM.reelRole = $('#reelRole');
@@ -156,6 +184,7 @@
     DOM.btnReelSend = $('#btnReelSend');
     DOM.toast = $('#toast');
     DOM.toastText = $('#toastText');
+    DOM.metaThemeColor = $('#metaThemeColor');
   }
 
   // IndexedDB
@@ -221,7 +250,7 @@
     showToast('🔓 Council unlocked');
   }
 
-  // Theme
+  // Theme (Coal-to-Gold progression)
   function updateTheme() {
     const score = state.prefs.richScore;
     let theme = 'coal';
@@ -231,11 +260,41 @@
     DOM.body.setAttribute('data-theme', theme);
   }
 
+  // Light/Dark Mode Toggle
+  function toggleDarkMode() {
+    state.prefs.darkMode = !state.prefs.darkMode;
+    applyDarkMode();
+    saveDarkModePreference();
+  }
+
+  function applyDarkMode() {
+    const isDark = state.prefs.darkMode;
+    DOM.body.setAttribute('data-mode', isDark ? 'dark' : 'light');
+    
+    // Update icons
+    if (isDark) {
+      DOM.iconSun.classList.remove('hidden');
+      DOM.iconMoon.classList.add('hidden');
+    } else {
+      DOM.iconSun.classList.add('hidden');
+      DOM.iconMoon.classList.remove('hidden');
+    }
+    
+    // Update meta theme color
+    const themeColor = isDark ? '#0d1117' : '#ffffff';
+    DOM.metaThemeColor.setAttribute('content', themeColor);
+  }
+
+  async function saveDarkModePreference() {
+    await DB.put('prefs', { id: 'darkMode', value: state.prefs.darkMode });
+  }
+
   // Data
   async function loadData() {
     const prefsRows = await DB.all('prefs');
     prefsRows.forEach(r => { state.prefs[r.id] = r.value; });
     if (typeof state.prefs.richScore !== 'number') state.prefs.richScore = 25;
+    if (typeof state.prefs.darkMode !== 'boolean') state.prefs.darkMode = true;
     
     const readsRows = await DB.all('reads');
     readsRows.forEach(r => { state.reads[r.id] = r.value; });
@@ -262,6 +321,7 @@
     }
     
     updateTheme();
+    applyDarkMode();
     generateReels();
   }
 
@@ -269,11 +329,12 @@
     await DB.put('reads', { id: 'reelsRead', value: state.reads.reelsRead });
   }
 
-  // Reels
+  // Reels Generation
   function generateReels() {
     const today = getDayKey();
     state.reels.clear();
     for (const m of COUNCIL) {
+      // Hakim only on Tue/Fri
       if (m.id === 'hakim') {
         const dow = new Date().getDay();
         if (dow !== 2 && dow !== 5) continue;
@@ -286,7 +347,7 @@
     }
   }
 
-  // Render Stories
+  // Render Stories Strip
   function renderStoriesStrip() {
     const today = getDayKey();
     const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
@@ -304,7 +365,7 @@
       `;
     }).join('');
     DOM.storiesStrip.querySelectorAll('.story-item').forEach(el => {
-      el.onclick = () => openReel(el.dataset.reel);
+      el.onclick = () => openReelFromStory(el.dataset.reel);
     });
   }
 
@@ -367,18 +428,16 @@
     scrollToBottom();
   }
 
-  // SCROLL TO BOTTOM - THE FIX
+  // Scroll to bottom
   function scrollToBottom() {
     if (!DOM.thread) return;
-    // Force layout calculation then scroll
     DOM.thread.scrollTop = DOM.thread.scrollHeight + 1000;
-    // Double-ensure with RAF
     requestAnimationFrame(() => {
       DOM.thread.scrollTop = DOM.thread.scrollHeight + 1000;
     });
   }
 
-  // Render Insights
+  // Render Insights (both desktop and mobile drawer)
   function renderInsights() {
     const chatId = state.activeChatId;
     if (!chatId) return;
@@ -390,21 +449,41 @@
 
     const rush = thread.rushScore || 70;
     const rich = thread.richScore || 30;
+    
+    // Desktop
     DOM.rushBar.style.width = `${rush}%`;
     DOM.richBar.style.width = `${rich}%`;
     DOM.rushValue.textContent = rush;
     DOM.richValue.textContent = rich;
+    
+    // Mobile drawer
+    DOM.rushBarDrawer.style.width = `${rush}%`;
+    DOM.richBarDrawer.style.width = `${rich}%`;
+    DOM.rushValueDrawer.textContent = rush;
+    DOM.richValueDrawer.textContent = rich;
 
     const isRich = rich > rush;
+    
+    // Desktop mode pill
     DOM.modePill.className = `mode-pill ${isRich ? 'rich' : 'rush'}`;
     DOM.modeLabel.textContent = isRich ? 'Rich' : 'Rush';
+    
+    // Mobile drawer mode pill
+    DOM.modePillDrawer.className = `mode-pill ${isRich ? 'rich' : 'rush'}`;
+    DOM.modeLabelDrawer.textContent = isRich ? 'Rich' : 'Rush';
 
     const focus = classifyFocus(userMsgs);
     updateFocusDisplay(focus);
 
+    // Desktop stats
     DOM.statUserMsgs.textContent = userMsgs.length;
     DOM.statAiMsgs.textContent = aiMsgs.length;
     DOM.statActions.textContent = thread.richActions || 0;
+    
+    // Mobile drawer stats
+    DOM.statUserMsgsDrawer.textContent = userMsgs.length;
+    DOM.statAiMsgsDrawer.textContent = aiMsgs.length;
+    DOM.statActionsDrawer.textContent = thread.richActions || 0;
 
     DOM.msgCount.textContent = thread.userMessageCount || 0;
     DOM.sessionLimit.classList.toggle('warning', (thread.userMessageCount || 0) >= CONFIG.SESSION_LIMIT - 2);
@@ -422,6 +501,19 @@
     const d = data[focus] || data.general;
     DOM.focusLabel.textContent = d.label;
     DOM.focusDesc.textContent = d.desc;
+    DOM.focusLabelDrawer.textContent = d.label;
+    DOM.focusDescDrawer.textContent = d.desc;
+  }
+
+  // Mobile Insights Drawer
+  function openInsightsDrawer() {
+    DOM.insightsOverlay.classList.add('open');
+    DOM.insightsDrawer.classList.add('open');
+  }
+
+  function closeInsightsDrawer() {
+    DOM.insightsOverlay.classList.remove('open');
+    DOM.insightsDrawer.classList.remove('open');
   }
 
   // Classifiers
@@ -443,13 +535,12 @@
     return delta;
   }
 
-  // Character name mapping (API uses uppercase, frontend uses lowercase)
+  // Character name mapping
   const CHAR_MAP = {
     'KAREEM': 'kareem', 'TURBO': 'turbo', 'WOLF': 'wolf', 'LUNA': 'luna',
     'THE_CAPTAIN': 'captain', 'TEMPO': 'tempo', 'HAKIM': 'hakim',
     'UNCLE_WHEAT': 'wheat', 'TOMMY_TOMATO': 'tommy', 'THE_ARCHITECT': 'architect'
   };
-  const CHAR_MAP_REVERSE = Object.fromEntries(Object.entries(CHAR_MAP).map(([k, v]) => [v, k]));
 
   // API
   async function callAPI(chatId, userText, history = []) {
@@ -469,25 +560,19 @@
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
       
-      // Debug: log raw response
       console.log('API Response:', JSON.stringify(data, null, 2));
       
-      // Handle new response structure
       if (data.bubbles && data.bubbles.length > 0) {
-        // Combine all bubbles into reply - handle both string and object text
         const reply = data.bubbles.map(b => {
-          // Extract text - handle if it's an object or string
           let text = b.text;
           if (typeof text === 'object' && text !== null) {
             text = text.content || text.message || text.response || JSON.stringify(text);
           }
           text = String(text || '');
-          
           const name = CHAR_MAP[b.speaker] ? COUNCIL.find(c => c.id === CHAR_MAP[b.speaker])?.name : b.speaker;
           return data.mode === 'council_debate' ? `${name}: ${text}` : text;
         }).join('\n\n');
         
-        // Add next action if present
         let nextAction = data.final?.next_action;
         if (typeof nextAction === 'object' && nextAction !== null) {
           nextAction = nextAction.content || nextAction.text || JSON.stringify(nextAction);
@@ -506,7 +591,6 @@
         };
       }
       
-      // Fallback for simple response or direct text
       let fallbackReply = data.reply || data.response || data.text || data.message;
       if (typeof fallbackReply === 'object' && fallbackReply !== null) {
         fallbackReply = fallbackReply.content || fallbackReply.text || JSON.stringify(fallbackReply);
@@ -521,18 +605,18 @@
 
   function getMockReply(chatId, userText) {
     const replies = {
-      kareem: "That sounds like too much work.\nWhat's the laziest solution?\n\nAction: Delete one step from your process.",
-      turbo: "Stop thinking.\nWhat can you do RIGHT NOW?\n\nAction: Pick one thing and do it in the next 30 minutes.",
-      wolf: "What's the ROI?\nHow do we 10x this?\n\nAction: Find the multiplier in your idea.",
-      luna: "But do you actually enjoy this?\nWhat's the point if you hate it?\n\nQuestion: What would make this exciting?",
-      captain: "Hold on.\nWhat's your runway?\n\nAction: Calculate your emergency fund in months.",
-      tempo: "That just cost you 2 minutes.\nAbout $0.75 of life.\n\nAction: Track your hours tomorrow.",
-      hakim: "Two farmers. Same field.\nOne grew what people wanted.\nOne grew what they needed.\n\nQuestion: What are you growing?",
-      wheat: "Is this a NEED or a WANT?\nBoring wins.\n\nAction: Find the survival-level version.",
-      tommy: "This needs more HYPE!\nBrand it better!\n\nAction: Add one premium element.",
-      architect: "Stop working IN it.\nWork ON the system.\n\nAction: Document one process this week."
+      kareem: "That sounds like too much work.\nWhat's the laziest solution?\n\n→ Action: Delete one step from your process.",
+      turbo: "Stop thinking.\nWhat can you do RIGHT NOW?\n\n→ Action: Pick one thing and do it in the next 30 minutes.",
+      wolf: "What's the ROI?\nHow do we 10x this?\n\n→ Action: Find the multiplier in your idea.",
+      luna: "But do you actually enjoy this?\nWhat's the point if you hate it?\n\n→ Question: What would make this exciting?",
+      captain: "Hold on.\nWhat's your runway?\n\n→ Action: Calculate your emergency fund in months.",
+      tempo: "That just cost you 2 minutes.\nAbout $0.75 of life.\n\n→ Action: Track your hours tomorrow.",
+      hakim: "Two farmers. Same field.\nOne grew what people wanted.\nOne grew what they needed.\n\n→ Question: What are you growing?",
+      wheat: "Is this a NEED or a WANT?\nBoring wins.\n\n→ Action: Find the survival-level version.",
+      tommy: "This needs more HYPE!\nBrand it better!\n\n→ Action: Add one premium element.",
+      architect: "Stop working IN it.\nWork ON the system.\n\n→ Action: Document one process this week."
     };
-    return replies[chatId] || "Tell me more.\n\nQuestion: What's the ONE thing blocking you?";
+    return replies[chatId] || "Tell me more.\n\n→ Question: What's the ONE thing blocking you?";
   }
 
   // Messaging
@@ -572,11 +656,8 @@
     await new Promise(r => setTimeout(r, delay));
     hideTyping();
 
-    // Determine which character responded
     const responderId = response.character || chatId;
     const member = COUNCIL.find(c => c.id === responderId) || COUNCIL.find(c => c.id === chatId);
-    
-    // Tag based on mode
     const tag = response.mode === 'council_debate' ? '🏛️ Council' : member?.name;
 
     await addMessage(chatId, 'in', response.reply, {
@@ -645,19 +726,14 @@
     const chatId = state.activeChatId;
     if (!chatId) return;
     
-    // Get last user message for context
     const msgs = state.messages.get(chatId) || [];
     const lastUserMsg = [...msgs].reverse().find(m => m.dir === 'out');
     const context = lastUserMsg?.text || "What should I do with my money?";
     
     showTyping();
-    
-    // Call API with debate trigger
     const response = await callAPI(chatId, `debate: ${context}`, msgs);
-    
     hideTyping();
     
-    // Use API response or fallback
     const fallbackResponse = `🏛️ THE COUNCIL SPEAKS:
 
 Kareem: "Too much work. Automate it."
@@ -679,14 +755,52 @@ Hakim: "Two farmers. Same field. Only one slept well."
     showToast('🏛️ Council assembled');
   }
 
-  // Reels
-  function openReel(reelId) {
-    const reel = state.reels.get(reelId);
-    if (!reel) return;
+  // ==========================================
+  // WHATSAPP-STYLE REELS
+  // ==========================================
+  
+  function openReelFromStory(reelId) {
+    const today = getDayKey();
+    const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
+    
+    // Find the index of the clicked reel
+    const clickedIndex = todayReels.findIndex(r => r.id === reelId);
+    if (clickedIndex === -1) return;
+    
+    // Set up the queue starting from the clicked reel
+    state.reelQueue = todayReels;
+    state.currentReelIndex = clickedIndex;
+    
+    // Build progress bar segments
+    buildProgressSegments();
+    
+    // Show the reel
+    showCurrentReel();
+  }
+
+  function buildProgressSegments() {
+    const count = state.reelQueue.length;
+    DOM.reelProgressContainer.innerHTML = state.reelQueue.map((_, i) => {
+      return `<div class="reel-progress-segment" data-index="${i}"><div class="reel-progress-fill"></div></div>`;
+    }).join('');
+  }
+
+  function showCurrentReel() {
+    const reel = state.reelQueue[state.currentReelIndex];
+    if (!reel) {
+      closeReel();
+      return;
+    }
+    
     const m = COUNCIL.find(c => c.id === reel.contactId);
-    if (!m) return;
+    if (!m) {
+      closeReel();
+      return;
+    }
 
     state.currentReel = reel;
+    
+    // Update UI
     DOM.reelAvatar.textContent = m.emoji;
     DOM.reelAvatar.style.background = `linear-gradient(135deg,${m.accent},${m.accent}88)`;
     DOM.reelAuthor.textContent = m.name;
@@ -696,24 +810,90 @@ Hakim: "Two farmers. Same field. Only one slept well."
     DOM.reelCta.textContent = `DM me "${reel.hook}"`;
     DOM.reelReplyInput.value = '';
     DOM.reelReplyInput.placeholder = `Reply "${reel.hook}"...`;
+    
+    // Show viewer
     DOM.reelViewer.classList.add('open');
-
-    DOM.reelProgressBar.style.width = '0%';
-    clearInterval(state.reelTimer);
-    const start = Date.now();
-    state.reelTimer = setInterval(() => {
-      const p = Math.min((Date.now() - start) / CONFIG.REEL_DURATION, 1);
-      DOM.reelProgressBar.style.width = `${p * 100}%`;
-      if (p >= 1) clearInterval(state.reelTimer);
-    }, 50);
-
+    
+    // Mark previous segments as completed
+    updateProgressSegments();
+    
+    // Start the timer for current segment
+    startReelTimer();
+    
+    // Mark as read
     markReelRead(reel.day, reel.contactId);
+  }
+
+  function updateProgressSegments() {
+    const segments = DOM.reelProgressContainer.querySelectorAll('.reel-progress-segment');
+    segments.forEach((seg, i) => {
+      const fill = seg.querySelector('.reel-progress-fill');
+      if (i < state.currentReelIndex) {
+        // Completed
+        seg.classList.add('completed');
+        seg.classList.remove('upcoming');
+        fill.style.width = '100%';
+      } else if (i > state.currentReelIndex) {
+        // Upcoming
+        seg.classList.remove('completed');
+        seg.classList.add('upcoming');
+        fill.style.width = '0%';
+      } else {
+        // Current - will be animated
+        seg.classList.remove('completed', 'upcoming');
+        fill.style.width = '0%';
+      }
+    });
+  }
+
+  function startReelTimer() {
+    clearInterval(state.reelTimer);
+    
+    const currentSegment = DOM.reelProgressContainer.querySelector(`.reel-progress-segment[data-index="${state.currentReelIndex}"]`);
+    if (!currentSegment) return;
+    
+    const fill = currentSegment.querySelector('.reel-progress-fill');
+    const start = Date.now();
+    
+    state.reelTimer = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / CONFIG.REEL_DURATION, 1);
+      fill.style.width = `${progress * 100}%`;
+      
+      if (progress >= 1) {
+        clearInterval(state.reelTimer);
+        // Auto-advance to next reel
+        goToNextReel();
+      }
+    }, 50);
+  }
+
+  function goToNextReel() {
+    if (state.currentReelIndex < state.reelQueue.length - 1) {
+      state.currentReelIndex++;
+      showCurrentReel();
+    } else {
+      // End of reels
+      closeReel();
+    }
+  }
+
+  function goToPrevReel() {
+    if (state.currentReelIndex > 0) {
+      state.currentReelIndex--;
+      showCurrentReel();
+    } else {
+      // Restart current reel
+      showCurrentReel();
+    }
   }
 
   function closeReel() {
     clearInterval(state.reelTimer);
     DOM.reelViewer.classList.remove('open');
     state.currentReel = null;
+    state.reelQueue = [];
+    state.currentReelIndex = 0;
   }
 
   async function sendReelReply() {
@@ -771,7 +951,7 @@ Hakim: "Two farmers. Same field. Only one slept well."
       await DB.put('threads', thread);
     }
 
-    // Add opener only if no messages exist
+    // Add opener if no messages
     const msgs = state.messages.get(chatId) || [];
     if (msgs.length === 0 && OPENER[chatId]) {
       await addMessage(chatId, 'in', OPENER[chatId], { tag: m?.name });
@@ -787,7 +967,6 @@ Hakim: "Two farmers. Same field. Only one slept well."
     renderChatList();
     renderInsights();
     
-    // Focus input on desktop
     setTimeout(() => DOM.msgInput.focus(), 100);
   }
 
@@ -824,15 +1003,25 @@ Hakim: "Two farmers. Same field. Only one slept well."
 
   // Events
   function bindEvents() {
+    // Lock screen
     DOM.btnUnlock.onclick = attemptBiometricUnlock;
     DOM.btnUnlockDemo.onclick = unlockApp;
+    
+    // Navigation
     DOM.btnBack.onclick = () => setRoute('home');
     DOM.btnStartChat.onclick = () => {
       const firstReel = state.reels.values().next().value;
-      if (firstReel) openReel(firstReel.id);
+      if (firstReel) openReelFromStory(firstReel.id);
       else if (COUNCIL.length) openChat(COUNCIL[0].id);
     };
+    
+    // Theme toggle
+    DOM.btnThemeToggle.onclick = toggleDarkMode;
+    
+    // Search
     DOM.searchInput.oninput = renderChatList;
+    
+    // Message input
     DOM.msgInput.oninput = () => {
       autoGrow(DOM.msgInput);
       DOM.btnSend.disabled = !DOM.msgInput.value.trim();
@@ -841,17 +1030,52 @@ Hakim: "Two farmers. Same field. Only one slept well."
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     };
     DOM.btnSend.onclick = sendMessage;
+    
+    // Quick actions
     DOM.quickActions.onclick = e => {
       const btn = e.target.closest('.quick-btn');
       if (btn) handleChip(btn.dataset.action);
     };
+    
+    // Council
     DOM.btnCouncil.onclick = summonCouncil;
+    
+    // Insights drawer (mobile)
+    DOM.btnInsights.onclick = openInsightsDrawer;
+    DOM.insightsOverlay.onclick = closeInsightsDrawer;
+    
+    // Reel viewer - WhatsApp style navigation
     DOM.btnCloseReel.onclick = closeReel;
-    DOM.reelViewer.onclick = e => { if (e.target === DOM.reelViewer) closeReel(); };
+    DOM.reelViewer.onclick = e => { 
+      if (e.target === DOM.reelViewer) closeReel(); 
+    };
+    DOM.reelTouchPrev.onclick = goToPrevReel;
+    DOM.reelTouchNext.onclick = goToNextReel;
     DOM.btnReelSend.onclick = sendReelReply;
-    DOM.reelReplyInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); sendReelReply(); } };
-    window.onkeydown = e => { if (e.key === 'Escape') closeReel(); };
-    document.onvisibilitychange = () => { if (!document.hidden) { generateReels(); renderStoriesStrip(); } };
+    DOM.reelReplyInput.onkeydown = e => { 
+      if (e.key === 'Enter') { e.preventDefault(); sendReelReply(); } 
+    };
+    
+    // Keyboard shortcuts
+    window.onkeydown = e => { 
+      if (e.key === 'Escape') {
+        if (DOM.reelViewer.classList.contains('open')) closeReel();
+        else if (DOM.insightsDrawer.classList.contains('open')) closeInsightsDrawer();
+      }
+      // Arrow keys for reel navigation
+      if (DOM.reelViewer.classList.contains('open')) {
+        if (e.key === 'ArrowLeft') goToPrevReel();
+        if (e.key === 'ArrowRight') goToNextReel();
+      }
+    };
+    
+    // Visibility change
+    document.onvisibilitychange = () => { 
+      if (!document.hidden) { 
+        generateReels(); 
+        renderStoriesStrip(); 
+      } 
+    };
   }
 
   // Init
@@ -864,7 +1088,7 @@ Hakim: "Two farmers. Same field. Only one slept well."
       renderStoriesStrip();
       renderChatList();
       setRoute('home');
-      console.log('🏛️ Money AI v3 ready');
+      console.log('🏛️ Money AI v4 ready');
     } catch (err) {
       console.error('Init failed:', err);
       showToast('⚠️ Failed to initialize');
