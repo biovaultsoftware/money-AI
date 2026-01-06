@@ -1,13 +1,12 @@
 /**
  * Money AI — The Council of 10
- * Production-Ready PWA v4
- * Features: WhatsApp-style Reels, Light/Dark Mode, Mobile Insights Drawer
+ * Production-Ready PWA with Auto-Fit Responsiveness
  */
 (function() {
   'use strict';
 
   const CONFIG = {
-    DB_NAME: 'moneyai_v4',
+    DB_NAME: 'moneyai_v3',
     DB_VERSION: 1,
     SESSION_LIMIT: 12,
     TYPING_DELAY: 600,
@@ -98,14 +97,12 @@
     threads: new Map(),
     messages: new Map(),
     reels: new Map(),
-    prefs: { theme: 'ember', richScore: 25, darkMode: true },
+    prefs: { theme: 'ember', richScore: 25, mode: 'dark' },
     reads: { reelsRead: {} },
     isSending: false,
     reelTimer: null,
-    // WhatsApp-style reels state
     reelQueue: [],
-    currentReelIndex: 0,
-    currentReel: null
+    currentReelIndex: 0
   };
 
   // DOM Cache
@@ -138,11 +135,6 @@
     DOM.quickActions = $('#quickActions');
     DOM.msgInput = $('#msgInput');
     DOM.btnSend = $('#btnSend');
-    // Theme toggle
-    DOM.btnThemeToggle = $('#btnThemeToggle');
-    DOM.iconSun = $('#iconSun');
-    DOM.iconMoon = $('#iconMoon');
-    // Desktop insights
     DOM.modePill = $('#modePill');
     DOM.modeLabel = $('#modeLabel');
     DOM.rushBar = $('#rushBar');
@@ -154,9 +146,26 @@
     DOM.statUserMsgs = $('#statUserMsgs');
     DOM.statAiMsgs = $('#statAiMsgs');
     DOM.statActions = $('#statActions');
-    // Mobile insights drawer
+    DOM.reelViewer = $('#reelViewer');
+    DOM.reelProgressSegments = $('#reelProgressSegments');
+    DOM.reelAvatar = $('#reelAvatar');
+    DOM.reelAuthor = $('#reelAuthor');
+    DOM.reelRole = $('#reelRole');
+    DOM.reelTitle = $('#reelTitle');
+    DOM.reelLines = $('#reelLines');
+    DOM.reelCta = $('#reelCta');
+    DOM.reelReplyInput = $('#reelReplyInput');
+    DOM.btnCloseReel = $('#btnCloseReel');
+    DOM.btnReelSend = $('#btnReelSend');
+    DOM.reelTouchPrev = $('#reelTouchPrev');
+    DOM.reelTouchNext = $('#reelTouchNext');
+    DOM.toast = $('#toast');
+    DOM.toastText = $('#toastText');
+    DOM.themeToggle = $('#themeToggle');
     DOM.insightsOverlay = $('#insightsOverlay');
     DOM.insightsDrawer = $('#insightsDrawer');
+    DOM.drawerClose = $('#drawerClose');
+    // Drawer elements
     DOM.modePillDrawer = $('#modePillDrawer');
     DOM.modeLabelDrawer = $('#modeLabelDrawer');
     DOM.rushBarDrawer = $('#rushBarDrawer');
@@ -168,23 +177,6 @@
     DOM.statUserMsgsDrawer = $('#statUserMsgsDrawer');
     DOM.statAiMsgsDrawer = $('#statAiMsgsDrawer');
     DOM.statActionsDrawer = $('#statActionsDrawer');
-    // Reel viewer
-    DOM.reelViewer = $('#reelViewer');
-    DOM.reelProgressContainer = $('#reelProgressContainer');
-    DOM.reelTouchPrev = $('#reelTouchPrev');
-    DOM.reelTouchNext = $('#reelTouchNext');
-    DOM.reelAvatar = $('#reelAvatar');
-    DOM.reelAuthor = $('#reelAuthor');
-    DOM.reelRole = $('#reelRole');
-    DOM.reelTitle = $('#reelTitle');
-    DOM.reelLines = $('#reelLines');
-    DOM.reelCta = $('#reelCta');
-    DOM.reelReplyInput = $('#reelReplyInput');
-    DOM.btnCloseReel = $('#btnCloseReel');
-    DOM.btnReelSend = $('#btnReelSend');
-    DOM.toast = $('#toast');
-    DOM.toastText = $('#toastText');
-    DOM.metaThemeColor = $('#metaThemeColor');
   }
 
   // IndexedDB
@@ -233,6 +225,34 @@
     }
   };
 
+  // Theme Toggle
+  function toggleTheme() {
+    const currentMode = state.prefs.mode || 'dark';
+    const newMode = currentMode === 'dark' ? 'light' : 'dark';
+    state.prefs.mode = newMode;
+    applyThemeMode(newMode);
+    DB.put('prefs', { id: 'mode', value: newMode });
+  }
+
+  function applyThemeMode(mode) {
+    DOM.body.setAttribute('data-mode', mode);
+    const themeColor = mode === 'dark' ? '#0d1117' : '#ffffff';
+    document.getElementById('themeColor')?.setAttribute('content', themeColor);
+    
+    // Toggle icons
+    const sunIcon = DOM.themeToggle?.querySelector('.icon-sun');
+    const moonIcon = DOM.themeToggle?.querySelector('.icon-moon');
+    if (sunIcon && moonIcon) {
+      if (mode === 'dark') {
+        sunIcon.classList.remove('hidden');
+        moonIcon.classList.add('hidden');
+      } else {
+        sunIcon.classList.add('hidden');
+        moonIcon.classList.remove('hidden');
+      }
+    }
+  }
+
   // Biometrics
   async function attemptBiometricUnlock() {
     if (!window.PublicKeyCredential) { unlockApp(); return; }
@@ -250,7 +270,7 @@
     showToast('🔓 Council unlocked');
   }
 
-  // Theme (Coal-to-Gold progression)
+  // Coal-to-Gold Theme
   function updateTheme() {
     const score = state.prefs.richScore;
     let theme = 'coal';
@@ -260,41 +280,12 @@
     DOM.body.setAttribute('data-theme', theme);
   }
 
-  // Light/Dark Mode Toggle
-  function toggleDarkMode() {
-    state.prefs.darkMode = !state.prefs.darkMode;
-    applyDarkMode();
-    saveDarkModePreference();
-  }
-
-  function applyDarkMode() {
-    const isDark = state.prefs.darkMode;
-    DOM.body.setAttribute('data-mode', isDark ? 'dark' : 'light');
-    
-    // Update icons
-    if (isDark) {
-      DOM.iconSun.classList.remove('hidden');
-      DOM.iconMoon.classList.add('hidden');
-    } else {
-      DOM.iconSun.classList.add('hidden');
-      DOM.iconMoon.classList.remove('hidden');
-    }
-    
-    // Update meta theme color
-    const themeColor = isDark ? '#0d1117' : '#ffffff';
-    DOM.metaThemeColor.setAttribute('content', themeColor);
-  }
-
-  async function saveDarkModePreference() {
-    await DB.put('prefs', { id: 'darkMode', value: state.prefs.darkMode });
-  }
-
   // Data
   async function loadData() {
     const prefsRows = await DB.all('prefs');
     prefsRows.forEach(r => { state.prefs[r.id] = r.value; });
     if (typeof state.prefs.richScore !== 'number') state.prefs.richScore = 25;
-    if (typeof state.prefs.darkMode !== 'boolean') state.prefs.darkMode = true;
+    if (!state.prefs.mode) state.prefs.mode = 'dark';
     
     const readsRows = await DB.all('reads');
     readsRows.forEach(r => { state.reads[r.id] = r.value; });
@@ -321,7 +312,7 @@
     }
     
     updateTheme();
-    applyDarkMode();
+    applyThemeMode(state.prefs.mode);
     generateReels();
   }
 
@@ -329,12 +320,11 @@
     await DB.put('reads', { id: 'reelsRead', value: state.reads.reelsRead });
   }
 
-  // Reels Generation
+  // Reels
   function generateReels() {
     const today = getDayKey();
     state.reels.clear();
     for (const m of COUNCIL) {
-      // Hakim only on Tue/Fri
       if (m.id === 'hakim') {
         const dow = new Date().getDay();
         if (dow !== 2 && dow !== 5) continue;
@@ -347,7 +337,7 @@
     }
   }
 
-  // Render Stories Strip
+  // Render Stories
   function renderStoriesStrip() {
     const today = getDayKey();
     const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
@@ -365,7 +355,7 @@
       `;
     }).join('');
     DOM.storiesStrip.querySelectorAll('.story-item').forEach(el => {
-      el.onclick = () => openReelFromStory(el.dataset.reel);
+      el.onclick = () => openReelQueue(el.dataset.reel);
     });
   }
 
@@ -437,7 +427,7 @@
     });
   }
 
-  // Render Insights (both desktop and mobile drawer)
+  // Render Insights (both desktop and drawer)
   function renderInsights() {
     const chatId = state.activeChatId;
     if (!chatId) return;
@@ -451,42 +441,44 @@
     const rich = thread.richScore || 30;
     
     // Desktop
-    DOM.rushBar.style.width = `${rush}%`;
-    DOM.richBar.style.width = `${rich}%`;
-    DOM.rushValue.textContent = rush;
-    DOM.richValue.textContent = rich;
+    if (DOM.rushBar) DOM.rushBar.style.width = `${rush}%`;
+    if (DOM.richBar) DOM.richBar.style.width = `${rich}%`;
+    if (DOM.rushValue) DOM.rushValue.textContent = rush;
+    if (DOM.richValue) DOM.richValue.textContent = rich;
     
-    // Mobile drawer
-    DOM.rushBarDrawer.style.width = `${rush}%`;
-    DOM.richBarDrawer.style.width = `${rich}%`;
-    DOM.rushValueDrawer.textContent = rush;
-    DOM.richValueDrawer.textContent = rich;
+    // Drawer
+    if (DOM.rushBarDrawer) DOM.rushBarDrawer.style.width = `${rush}%`;
+    if (DOM.richBarDrawer) DOM.richBarDrawer.style.width = `${rich}%`;
+    if (DOM.rushValueDrawer) DOM.rushValueDrawer.textContent = rush;
+    if (DOM.richValueDrawer) DOM.richValueDrawer.textContent = rich;
 
     const isRich = rich > rush;
+    const modeClass = isRich ? 'rich' : 'rush';
+    const modeText = isRich ? 'Rich' : 'Rush';
     
-    // Desktop mode pill
-    DOM.modePill.className = `mode-pill ${isRich ? 'rich' : 'rush'}`;
-    DOM.modeLabel.textContent = isRich ? 'Rich' : 'Rush';
-    
-    // Mobile drawer mode pill
-    DOM.modePillDrawer.className = `mode-pill ${isRich ? 'rich' : 'rush'}`;
-    DOM.modeLabelDrawer.textContent = isRich ? 'Rich' : 'Rush';
+    if (DOM.modePill) {
+      DOM.modePill.className = `mode-pill ${modeClass}`;
+      DOM.modeLabel.textContent = modeText;
+    }
+    if (DOM.modePillDrawer) {
+      DOM.modePillDrawer.className = `mode-pill ${modeClass}`;
+      DOM.modeLabelDrawer.textContent = modeText;
+    }
 
     const focus = classifyFocus(userMsgs);
     updateFocusDisplay(focus);
 
-    // Desktop stats
-    DOM.statUserMsgs.textContent = userMsgs.length;
-    DOM.statAiMsgs.textContent = aiMsgs.length;
-    DOM.statActions.textContent = thread.richActions || 0;
+    // Stats
+    if (DOM.statUserMsgs) DOM.statUserMsgs.textContent = userMsgs.length;
+    if (DOM.statAiMsgs) DOM.statAiMsgs.textContent = aiMsgs.length;
+    if (DOM.statActions) DOM.statActions.textContent = thread.richActions || 0;
     
-    // Mobile drawer stats
-    DOM.statUserMsgsDrawer.textContent = userMsgs.length;
-    DOM.statAiMsgsDrawer.textContent = aiMsgs.length;
-    DOM.statActionsDrawer.textContent = thread.richActions || 0;
+    if (DOM.statUserMsgsDrawer) DOM.statUserMsgsDrawer.textContent = userMsgs.length;
+    if (DOM.statAiMsgsDrawer) DOM.statAiMsgsDrawer.textContent = aiMsgs.length;
+    if (DOM.statActionsDrawer) DOM.statActionsDrawer.textContent = thread.richActions || 0;
 
-    DOM.msgCount.textContent = thread.userMessageCount || 0;
-    DOM.sessionLimit.classList.toggle('warning', (thread.userMessageCount || 0) >= CONFIG.SESSION_LIMIT - 2);
+    if (DOM.msgCount) DOM.msgCount.textContent = thread.userMessageCount || 0;
+    if (DOM.sessionLimit) DOM.sessionLimit.classList.toggle('warning', (thread.userMessageCount || 0) >= CONFIG.SESSION_LIMIT - 2);
   }
 
   function updateFocusDisplay(focus) {
@@ -499,21 +491,10 @@
       wheat: { label: 'Necessity', desc: 'Testing survival-level value.' }
     };
     const d = data[focus] || data.general;
-    DOM.focusLabel.textContent = d.label;
-    DOM.focusDesc.textContent = d.desc;
-    DOM.focusLabelDrawer.textContent = d.label;
-    DOM.focusDescDrawer.textContent = d.desc;
-  }
-
-  // Mobile Insights Drawer
-  function openInsightsDrawer() {
-    DOM.insightsOverlay.classList.add('open');
-    DOM.insightsDrawer.classList.add('open');
-  }
-
-  function closeInsightsDrawer() {
-    DOM.insightsOverlay.classList.remove('open');
-    DOM.insightsDrawer.classList.remove('open');
+    if (DOM.focusLabel) DOM.focusLabel.textContent = d.label;
+    if (DOM.focusDesc) DOM.focusDesc.textContent = d.desc;
+    if (DOM.focusLabelDrawer) DOM.focusLabelDrawer.textContent = d.label;
+    if (DOM.focusDescDrawer) DOM.focusDescDrawer.textContent = d.desc;
   }
 
   // Classifiers
@@ -560,8 +541,6 @@
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
       
-      console.log('API Response:', JSON.stringify(data, null, 2));
-      
       if (data.bubbles && data.bubbles.length > 0) {
         const reply = data.bubbles.map(b => {
           let text = b.text;
@@ -578,9 +557,7 @@
           nextAction = nextAction.content || nextAction.text || JSON.stringify(nextAction);
         }
         
-        const fullReply = nextAction 
-          ? `${reply}\n\n→ Action: ${nextAction}`
-          : reply;
+        const fullReply = nextAction ? `${reply}\n\n→ Action: ${nextAction}` : reply;
         
         return {
           reply: fullReply,
@@ -605,18 +582,18 @@
 
   function getMockReply(chatId, userText) {
     const replies = {
-      kareem: "That sounds like too much work.\nWhat's the laziest solution?\n\n→ Action: Delete one step from your process.",
-      turbo: "Stop thinking.\nWhat can you do RIGHT NOW?\n\n→ Action: Pick one thing and do it in the next 30 minutes.",
-      wolf: "What's the ROI?\nHow do we 10x this?\n\n→ Action: Find the multiplier in your idea.",
-      luna: "But do you actually enjoy this?\nWhat's the point if you hate it?\n\n→ Question: What would make this exciting?",
-      captain: "Hold on.\nWhat's your runway?\n\n→ Action: Calculate your emergency fund in months.",
-      tempo: "That just cost you 2 minutes.\nAbout $0.75 of life.\n\n→ Action: Track your hours tomorrow.",
-      hakim: "Two farmers. Same field.\nOne grew what people wanted.\nOne grew what they needed.\n\n→ Question: What are you growing?",
-      wheat: "Is this a NEED or a WANT?\nBoring wins.\n\n→ Action: Find the survival-level version.",
-      tommy: "This needs more HYPE!\nBrand it better!\n\n→ Action: Add one premium element.",
-      architect: "Stop working IN it.\nWork ON the system.\n\n→ Action: Document one process this week."
+      kareem: "That sounds like too much work.\nWhat's the laziest solution?\n\nAction: Delete one step from your process.",
+      turbo: "Stop thinking.\nWhat can you do RIGHT NOW?\n\nAction: Pick one thing and do it in the next 30 minutes.",
+      wolf: "What's the ROI?\nHow do we 10x this?\n\nAction: Find the multiplier in your idea.",
+      luna: "But do you actually enjoy this?\nWhat's the point if you hate it?\n\nQuestion: What would make this exciting?",
+      captain: "Hold on.\nWhat's your runway?\n\nAction: Calculate your emergency fund in months.",
+      tempo: "That just cost you 2 minutes.\nAbout $0.75 of life.\n\nAction: Track your hours tomorrow.",
+      hakim: "Two farmers. Same field.\nOne grew what people wanted.\nOne grew what they needed.\n\nQuestion: What are you growing?",
+      wheat: "Is this a NEED or a WANT?\nBoring wins.\n\nAction: Find the survival-level version.",
+      tommy: "This needs more HYPE!\nBrand it better!\n\nAction: Add one premium element.",
+      architect: "Stop working IN it.\nWork ON the system.\n\nAction: Document one process this week."
     };
-    return replies[chatId] || "Tell me more.\n\n→ Question: What's the ONE thing blocking you?";
+    return replies[chatId] || "Tell me more.\n\nQuestion: What's the ONE thing blocking you?";
   }
 
   // Messaging
@@ -755,135 +732,84 @@ Hakim: "Two farmers. Same field. Only one slept well."
     showToast('🏛️ Council assembled');
   }
 
-  // ==========================================
-  // WHATSAPP-STYLE REELS
-  // ==========================================
-  
-  function openReelFromStory(reelId) {
+  // WhatsApp-style Reels with Queue
+  function openReelQueue(startReelId) {
     const today = getDayKey();
     const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
     
-    // Find the index of the clicked reel
-    const clickedIndex = todayReels.findIndex(r => r.id === reelId);
-    if (clickedIndex === -1) return;
+    if (todayReels.length === 0) return;
     
-    // Set up the queue starting from the clicked reel
     state.reelQueue = todayReels;
-    state.currentReelIndex = clickedIndex;
+    state.currentReelIndex = todayReels.findIndex(r => r.id === startReelId);
+    if (state.currentReelIndex === -1) state.currentReelIndex = 0;
     
-    // Build progress bar segments
-    buildProgressSegments();
-    
-    // Show the reel
+    renderProgressSegments();
     showCurrentReel();
+    DOM.reelViewer.classList.add('open');
   }
 
-  function buildProgressSegments() {
-    const count = state.reelQueue.length;
-    DOM.reelProgressContainer.innerHTML = state.reelQueue.map((_, i) => {
-      return `<div class="reel-progress-segment" data-index="${i}"><div class="reel-progress-fill"></div></div>`;
-    }).join('');
+  function renderProgressSegments() {
+    DOM.reelProgressSegments.innerHTML = state.reelQueue.map((_, i) => `
+      <div class="reel-segment ${i < state.currentReelIndex ? 'completed' : ''} ${i === state.currentReelIndex ? 'active' : ''}">
+        <div class="reel-segment-fill"></div>
+      </div>
+    `).join('');
   }
 
   function showCurrentReel() {
     const reel = state.reelQueue[state.currentReelIndex];
-    if (!reel) {
-      closeReel();
-      return;
-    }
+    if (!reel) { closeReel(); return; }
     
     const m = COUNCIL.find(c => c.id === reel.contactId);
-    if (!m) {
-      closeReel();
-      return;
-    }
+    if (!m) { closeReel(); return; }
 
-    state.currentReel = reel;
-    
-    // Update UI
     DOM.reelAvatar.textContent = m.emoji;
     DOM.reelAvatar.style.background = `linear-gradient(135deg,${m.accent},${m.accent}88)`;
     DOM.reelAuthor.textContent = m.name;
     DOM.reelRole.textContent = m.role;
     DOM.reelTitle.textContent = reel.title;
     DOM.reelLines.innerHTML = reel.lines.map(l => `<p>${l}</p>`).join('');
-    DOM.reelCta.textContent = `DM me "${reel.hook}"`;
+    DOM.reelCta.querySelector('.reel-cta-text').textContent = `DM me "${reel.hook}"`;
     DOM.reelReplyInput.value = '';
     DOM.reelReplyInput.placeholder = `Reply "${reel.hook}"...`;
-    
-    // Show viewer
-    DOM.reelViewer.classList.add('open');
-    
-    // Mark previous segments as completed
-    updateProgressSegments();
-    
-    // Start the timer for current segment
-    startReelTimer();
-    
-    // Mark as read
+
+    renderProgressSegments();
+    startReelProgress();
     markReelRead(reel.day, reel.contactId);
   }
 
-  function updateProgressSegments() {
-    const segments = DOM.reelProgressContainer.querySelectorAll('.reel-progress-segment');
-    segments.forEach((seg, i) => {
-      const fill = seg.querySelector('.reel-progress-fill');
-      if (i < state.currentReelIndex) {
-        // Completed
-        seg.classList.add('completed');
-        seg.classList.remove('upcoming');
-        fill.style.width = '100%';
-      } else if (i > state.currentReelIndex) {
-        // Upcoming
-        seg.classList.remove('completed');
-        seg.classList.add('upcoming');
-        fill.style.width = '0%';
-      } else {
-        // Current - will be animated
-        seg.classList.remove('completed', 'upcoming');
-        fill.style.width = '0%';
-      }
-    });
-  }
-
-  function startReelTimer() {
+  function startReelProgress() {
     clearInterval(state.reelTimer);
     
-    const currentSegment = DOM.reelProgressContainer.querySelector(`.reel-progress-segment[data-index="${state.currentReelIndex}"]`);
-    if (!currentSegment) return;
+    const activeSegment = DOM.reelProgressSegments.querySelector('.reel-segment.active .reel-segment-fill');
+    if (activeSegment) activeSegment.style.width = '0%';
     
-    const fill = currentSegment.querySelector('.reel-progress-fill');
     const start = Date.now();
-    
     state.reelTimer = setInterval(() => {
       const elapsed = Date.now() - start;
       const progress = Math.min(elapsed / CONFIG.REEL_DURATION, 1);
-      fill.style.width = `${progress * 100}%`;
+      
+      if (activeSegment) activeSegment.style.width = `${progress * 100}%`;
       
       if (progress >= 1) {
         clearInterval(state.reelTimer);
-        // Auto-advance to next reel
-        goToNextReel();
+        nextReel();
       }
     }, 50);
   }
 
-  function goToNextReel() {
+  function nextReel() {
     if (state.currentReelIndex < state.reelQueue.length - 1) {
       state.currentReelIndex++;
       showCurrentReel();
     } else {
-      // End of reels
       closeReel();
     }
   }
 
-  function goToPrevReel() {
+  function prevReel() {
     if (state.currentReelIndex > 0) {
       state.currentReelIndex--;
-      showCurrentReel();
-    } else {
-      // Restart current reel
       showCurrentReel();
     }
   }
@@ -891,15 +817,15 @@ Hakim: "Two farmers. Same field. Only one slept well."
   function closeReel() {
     clearInterval(state.reelTimer);
     DOM.reelViewer.classList.remove('open');
-    state.currentReel = null;
     state.reelQueue = [];
     state.currentReelIndex = 0;
   }
 
   async function sendReelReply() {
-    const text = DOM.reelReplyInput.value.trim() || state.currentReel?.hook || '';
-    if (!text || !state.currentReel) return;
-    const chatId = state.currentReel.contactId;
+    const reel = state.reelQueue[state.currentReelIndex];
+    const text = DOM.reelReplyInput.value.trim() || reel?.hook || '';
+    if (!text || !reel) return;
+    const chatId = reel.contactId;
     closeReel();
     openChat(chatId);
     setTimeout(() => {
@@ -913,6 +839,17 @@ Hakim: "Two farmers. Same field. Only one slept well."
     state.reads.reelsRead[day][contactId] = true;
     saveReads();
     renderStoriesStrip();
+  }
+
+  // Insights Drawer
+  function openInsightsDrawer() {
+    DOM.insightsOverlay.classList.add('open');
+    DOM.insightsDrawer.classList.add('open');
+  }
+
+  function closeInsightsDrawer() {
+    DOM.insightsOverlay.classList.remove('open');
+    DOM.insightsDrawer.classList.remove('open');
   }
 
   // Navigation
@@ -951,7 +888,6 @@ Hakim: "Two farmers. Same field. Only one slept well."
       await DB.put('threads', thread);
     }
 
-    // Add opener if no messages
     const msgs = state.messages.get(chatId) || [];
     if (msgs.length === 0 && OPENER[chatId]) {
       await addMessage(chatId, 'in', OPENER[chatId], { tag: m?.name });
@@ -1003,25 +939,15 @@ Hakim: "Two farmers. Same field. Only one slept well."
 
   // Events
   function bindEvents() {
-    // Lock screen
     DOM.btnUnlock.onclick = attemptBiometricUnlock;
     DOM.btnUnlockDemo.onclick = unlockApp;
-    
-    // Navigation
     DOM.btnBack.onclick = () => setRoute('home');
     DOM.btnStartChat.onclick = () => {
       const firstReel = state.reels.values().next().value;
-      if (firstReel) openReelFromStory(firstReel.id);
+      if (firstReel) openReelQueue(firstReel.id);
       else if (COUNCIL.length) openChat(COUNCIL[0].id);
     };
-    
-    // Theme toggle
-    DOM.btnThemeToggle.onclick = toggleDarkMode;
-    
-    // Search
     DOM.searchInput.oninput = renderChatList;
-    
-    // Message input
     DOM.msgInput.oninput = () => {
       autoGrow(DOM.msgInput);
       DOM.btnSend.disabled = !DOM.msgInput.value.trim();
@@ -1030,52 +956,52 @@ Hakim: "Two farmers. Same field. Only one slept well."
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     };
     DOM.btnSend.onclick = sendMessage;
-    
-    // Quick actions
     DOM.quickActions.onclick = e => {
       const btn = e.target.closest('.quick-btn');
       if (btn) handleChip(btn.dataset.action);
     };
-    
-    // Council
     DOM.btnCouncil.onclick = summonCouncil;
     
-    // Insights drawer (mobile)
-    DOM.btnInsights.onclick = openInsightsDrawer;
-    DOM.insightsOverlay.onclick = closeInsightsDrawer;
+    // Theme toggle
+    if (DOM.themeToggle) DOM.themeToggle.onclick = toggleTheme;
     
-    // Reel viewer - WhatsApp style navigation
+    // Insights drawer
+    if (DOM.btnInsights) DOM.btnInsights.onclick = openInsightsDrawer;
+    if (DOM.insightsOverlay) DOM.insightsOverlay.onclick = closeInsightsDrawer;
+    if (DOM.drawerClose) DOM.drawerClose.onclick = closeInsightsDrawer;
+    
+    // Reel controls
     DOM.btnCloseReel.onclick = closeReel;
-    DOM.reelViewer.onclick = e => { 
-      if (e.target === DOM.reelViewer) closeReel(); 
-    };
-    DOM.reelTouchPrev.onclick = goToPrevReel;
-    DOM.reelTouchNext.onclick = goToNextReel;
+    DOM.reelViewer.onclick = e => { if (e.target === DOM.reelViewer) closeReel(); };
     DOM.btnReelSend.onclick = sendReelReply;
-    DOM.reelReplyInput.onkeydown = e => { 
-      if (e.key === 'Enter') { e.preventDefault(); sendReelReply(); } 
-    };
+    DOM.reelReplyInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); sendReelReply(); } };
     
-    // Keyboard shortcuts
-    window.onkeydown = e => { 
-      if (e.key === 'Escape') {
-        if (DOM.reelViewer.classList.contains('open')) closeReel();
-        else if (DOM.insightsDrawer.classList.contains('open')) closeInsightsDrawer();
-      }
-      // Arrow keys for reel navigation
+    // Touch zones for reel navigation
+    if (DOM.reelTouchPrev) DOM.reelTouchPrev.onclick = prevReel;
+    if (DOM.reelTouchNext) DOM.reelTouchNext.onclick = nextReel;
+    
+    // Keyboard navigation
+    window.onkeydown = e => {
       if (DOM.reelViewer.classList.contains('open')) {
-        if (e.key === 'ArrowLeft') goToPrevReel();
-        if (e.key === 'ArrowRight') goToNextReel();
+        if (e.key === 'Escape') closeReel();
+        else if (e.key === 'ArrowLeft') prevReel();
+        else if (e.key === 'ArrowRight') nextReel();
       }
     };
     
-    // Visibility change
-    document.onvisibilitychange = () => { 
-      if (!document.hidden) { 
-        generateReels(); 
-        renderStoriesStrip(); 
-      } 
-    };
+    document.onvisibilitychange = () => { if (!document.hidden) { generateReels(); renderStoriesStrip(); } };
+    
+    // Handle resize for responsive behavior
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        // Close drawer on desktop
+        if (window.innerWidth >= 1200) {
+          closeInsightsDrawer();
+        }
+      }, 100);
+    });
   }
 
   // Init
@@ -1088,7 +1014,7 @@ Hakim: "Two farmers. Same field. Only one slept well."
       renderStoriesStrip();
       renderChatList();
       setRoute('home');
-      console.log('🏛️ Money AI v4 ready');
+      console.log('🏛️ Money AI v3 ready');
     } catch (err) {
       console.error('Init failed:', err);
       showToast('⚠️ Failed to initialize');
