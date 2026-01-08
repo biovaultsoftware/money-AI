@@ -1,6 +1,8 @@
 /**
  * Money AI — The Council of 10
  * Production-Ready PWA with Auto-Fit Responsiveness
+ * 
+ * FIX: Now includes conversation history in API requests
  */
 (function() {
   'use strict';
@@ -14,7 +16,8 @@
     REEL_DURATION: 6000,
     USE_REAL_API: true,
     WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev',
-    API_TIMEOUT: 15000
+    API_TIMEOUT: 15000,
+    MAX_HISTORY_MESSAGES: 20  // Limit history to avoid token overflow
   };
 
   // The 10 Council Members
@@ -222,176 +225,161 @@
         r.onsuccess = () => res(r.result || []);
         r.onerror = () => rej(r.error);
       });
+    },
+    async delete(store, key) {
+      await this.open();
+      return new Promise((res, rej) => {
+        const tx = this.db.transaction(store, 'readwrite');
+        const r = tx.objectStore(store).delete(key);
+        r.onsuccess = () => res(true);
+        r.onerror = () => rej(r.error);
+      });
     }
   };
 
-  // Theme Toggle
-  function toggleTheme() {
-    const currentMode = state.prefs.mode || 'dark';
-    const newMode = currentMode === 'dark' ? 'light' : 'dark';
-    state.prefs.mode = newMode;
-    applyThemeMode(newMode);
-    DB.put('prefs', { id: 'mode', value: newMode });
-  }
-
-  function applyThemeMode(mode) {
-    DOM.body.setAttribute('data-mode', mode);
-    const themeColor = mode === 'dark' ? '#0d1117' : '#ffffff';
-    document.getElementById('themeColor')?.setAttribute('content', themeColor);
-    
-    // Toggle icons
-    const sunIcon = DOM.themeToggle?.querySelector('.icon-sun');
-    const moonIcon = DOM.themeToggle?.querySelector('.icon-moon');
-    if (sunIcon && moonIcon) {
-      if (mode === 'dark') {
-        sunIcon.classList.remove('hidden');
-        moonIcon.classList.add('hidden');
-      } else {
-        sunIcon.classList.add('hidden');
-        moonIcon.classList.remove('hidden');
-      }
-    }
-  }
-
-  // Biometrics
-  async function attemptBiometricUnlock() {
-    if (!window.PublicKeyCredential) { unlockApp(); return; }
-    try {
-      const challenge = new TextEncoder().encode('moneyai-' + Date.now());
-      await navigator.credentials.get({ publicKey: { challenge, timeout: 60000, userVerification: 'required' } });
-      unlockApp();
-    } catch { unlockApp(); }
-  }
-
-  function unlockApp() {
-    state.isLocked = false;
-    DOM.lockScreen.classList.add('hidden');
-    DOM.app.classList.remove('locked');
-    showToast('🔓 Council unlocked');
-  }
-
-  // Coal-to-Gold Theme
+  // Theme management
   function updateTheme() {
     const score = state.prefs.richScore;
-    let theme = 'coal';
-    if (score >= 80) theme = 'gold';
-    else if (score >= 50) theme = 'bronze';
-    else if (score >= 25) theme = 'ember';
+    let theme;
+    if (score < 25) theme = 'coal';
+    else if (score < 50) theme = 'ember';
+    else if (score < 80) theme = 'bronze';
+    else theme = 'gold';
+    
     DOM.body.setAttribute('data-theme', theme);
+    state.prefs.theme = theme;
+    savePrefs();
   }
 
-  // Data
+  function toggleTheme() {
+    state.prefs.mode = state.prefs.mode === 'dark' ? 'light' : 'dark';
+    DOM.body.setAttribute('data-mode', state.prefs.mode);
+    savePrefs();
+    showToast(`${state.prefs.mode === 'dark' ? '🌙' : '☀️'} ${state.prefs.mode} mode`);
+  }
+
+  // Data persistence
   async function loadData() {
-    const prefsRows = await DB.all('prefs');
-    prefsRows.forEach(r => { state.prefs[r.id] = r.value; });
-    if (typeof state.prefs.richScore !== 'number') state.prefs.richScore = 25;
-    if (!state.prefs.mode) state.prefs.mode = 'dark';
-    
-    const readsRows = await DB.all('reads');
-    readsRows.forEach(r => { state.reads[r.id] = r.value; });
-    if (!state.reads.reelsRead) state.reads.reelsRead = {};
-    
     const threads = await DB.all('threads');
     threads.forEach(t => state.threads.set(t.id, t));
     
-    const messages = await DB.all('messages');
-    messages.forEach(m => {
+    const msgs = await DB.all('messages');
+    msgs.forEach(m => {
       if (!state.messages.has(m.chatId)) state.messages.set(m.chatId, []);
       state.messages.get(m.chatId).push(m);
     });
     
-    for (const [, msgs] of state.messages) msgs.sort((a, b) => a.ts - b.ts);
+    // Sort messages by timestamp
+    state.messages.forEach((arr, key) => {
+      arr.sort((a, b) => a.ts - b.ts);
+    });
+
+    const prefs = await DB.get('prefs', 'main');
+    if (prefs) Object.assign(state.prefs, prefs);
     
-    for (const m of COUNCIL) {
-      if (!state.threads.has(m.id)) {
-        const thread = { id: m.id, unread: 0, lastTs: 0, lastPreview: m.status, rushScore: 70, richScore: 30, userMessageCount: 0, richActions: 0 };
-        state.threads.set(m.id, thread);
-        await DB.put('threads', thread);
-      }
-      if (!state.messages.has(m.id)) state.messages.set(m.id, []);
-    }
-    
+    const reads = await DB.get('reads', 'main');
+    if (reads) Object.assign(state.reads, reads);
+
+    DOM.body.setAttribute('data-mode', state.prefs.mode);
     updateTheme();
-    applyThemeMode(state.prefs.mode);
     generateReels();
   }
 
+  async function savePrefs() {
+    await DB.put('prefs', { id: 'main', ...state.prefs });
+  }
+
   async function saveReads() {
-    await DB.put('reads', { id: 'reelsRead', value: state.reads.reelsRead });
+    await DB.put('reads', { id: 'main', ...state.reads });
   }
 
-  // Reels
+  // Reels generation
   function generateReels() {
-    const today = getDayKey();
     state.reels.clear();
-    for (const m of COUNCIL) {
-      if (m.id === 'hakim') {
-        const dow = new Date().getDay();
-        if (dow !== 2 && dow !== 5) continue;
-      }
-      const lib = REELS[m.id];
-      if (!lib?.length) continue;
-      const dayNum = parseInt(today.replace(/-/g, ''), 10);
-      const content = lib[dayNum % lib.length];
-      state.reels.set(`${today}:${m.id}`, { id: `${today}:${m.id}`, day: today, contactId: m.id, ...content });
-    }
-  }
-
-  // Render Stories
-  function renderStoriesStrip() {
-    const today = getDayKey();
-    const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
-    DOM.storiesStrip.innerHTML = todayReels.map(reel => {
-      const m = COUNCIL.find(c => c.id === reel.contactId);
-      if (!m) return '';
-      const isRead = state.reads.reelsRead[today]?.[reel.contactId];
-      return `
-        <div class="story-item" data-reel="${reel.id}">
-          <div class="story-ring ${isRead ? 'read' : ''}">
-            <div class="story-avatar" style="background:linear-gradient(135deg,${m.accent},${m.accent}88)">${m.emoji}</div>
-          </div>
-          <span class="story-name">${m.name}</span>
-        </div>
-      `;
-    }).join('');
-    DOM.storiesStrip.querySelectorAll('.story-item').forEach(el => {
-      el.onclick = () => openReelQueue(el.dataset.reel);
+    const day = getDayKey();
+    
+    COUNCIL.forEach(member => {
+      const memberReels = REELS[member.id];
+      if (!memberReels?.length) return;
+      
+      const dayIndex = parseInt(day.replace(/-/g, '')) % memberReels.length;
+      const reel = memberReels[dayIndex];
+      
+      state.reels.set(member.id, {
+        id: member.id,
+        contactId: member.id,
+        day,
+        ...reel,
+        emoji: member.emoji,
+        name: member.name,
+        role: member.role,
+        accent: member.accent
+      });
     });
   }
 
-  // Render Chat List
-  function renderChatList() {
-    const search = (DOM.searchInput?.value || '').toLowerCase();
-    const sorted = [...COUNCIL]
-      .filter(m => m.name.toLowerCase().includes(search) || m.role.toLowerCase().includes(search))
-      .sort((a, b) => (state.threads.get(b.id)?.lastTs || 0) - (state.threads.get(a.id)?.lastTs || 0));
-
-    DOM.chatList.innerHTML = sorted.map(m => {
-      const thread = state.threads.get(m.id);
-      const isActive = state.activeChatId === m.id;
+  // Render functions
+  function renderStoriesStrip() {
+    if (!DOM.storiesStrip) return;
+    const day = getDayKey();
+    
+    DOM.storiesStrip.innerHTML = Array.from(state.reels.values()).map(reel => {
+      const isRead = state.reads.reelsRead?.[day]?.[reel.contactId];
       return `
-        <div class="chat-item ${isActive ? 'active' : ''}" data-chat="${m.id}">
-          <div class="chat-avatar" style="background:linear-gradient(135deg,${m.accent},${m.accent}66)">${m.emoji}</div>
-          <div class="chat-meta">
-            <div class="chat-header">
-              <span class="chat-name">${m.name}</span>
-              <span class="chat-time">${formatTime(thread?.lastTs)}</span>
-            </div>
-            <div class="chat-role">${m.role}</div>
-            <div class="chat-preview">${truncate(thread?.lastPreview || m.status, 32)}</div>
-          </div>
+        <div class="story-avatar ${isRead ? 'read' : ''}" data-contact="${reel.contactId}" style="--accent:${reel.accent}">
+          <div class="story-ring"></div>
+          <div class="story-img">${reel.emoji}</div>
+          <div class="story-name">${reel.name}</div>
         </div>
       `;
     }).join('');
+
+    DOM.storiesStrip.querySelectorAll('.story-avatar').forEach(el => {
+      el.onclick = () => openReelQueue(el.dataset.contact);
+    });
+  }
+
+  function renderChatList() {
+    if (!DOM.chatList) return;
+    const query = DOM.searchInput?.value?.toLowerCase() || '';
+    
+    const threads = COUNCIL.map(member => {
+      const thread = state.threads.get(member.id);
+      return {
+        ...member,
+        lastTs: thread?.lastTs || 0,
+        lastPreview: thread?.lastPreview || OPENER[member.id] || 'Start chatting...',
+        unread: thread?.unread || 0
+      };
+    }).filter(t => 
+      !query || 
+      t.name.toLowerCase().includes(query) || 
+      t.role.toLowerCase().includes(query)
+    ).sort((a, b) => b.lastTs - a.lastTs);
+
+    DOM.chatList.innerHTML = threads.map(t => `
+      <div class="chat-item ${state.activeChatId === t.id ? 'active' : ''}" data-chat="${t.id}">
+        <div class="chat-avatar" style="background:linear-gradient(135deg,${t.accent},${t.accent}66)">${t.emoji}</div>
+        <div class="chat-info">
+          <div class="chat-header-row">
+            <span class="chat-name">${t.name}</span>
+            <span class="chat-time">${formatTime(t.lastTs)}</span>
+          </div>
+          <div class="chat-preview">${truncate(t.lastPreview, 40)}</div>
+        </div>
+        ${t.unread ? `<div class="chat-badge">${t.unread}</div>` : ''}
+      </div>
+    `).join('');
+
     DOM.chatList.querySelectorAll('.chat-item').forEach(el => {
       el.onclick = () => openChat(el.dataset.chat);
     });
   }
 
-  // Render Thread
   function renderThread() {
     const chatId = state.activeChatId;
-    if (!chatId) return;
+    if (!chatId || !DOM.thread) return;
+    
     const msgs = state.messages.get(chatId) || [];
     const m = COUNCIL.find(c => c.id === chatId);
 
@@ -523,6 +511,21 @@
     'UNCLE_WHEAT': 'wheat', 'TOMMY_TOMATO': 'tommy', 'THE_ARCHITECT': 'architect'
   };
 
+  // =====================================================
+  // FIX: Format conversation history for API
+  // =====================================================
+  function formatHistoryForAPI(messages) {
+    if (!messages || !messages.length) return [];
+    
+    // Take the last N messages to avoid token overflow
+    const recentMessages = messages.slice(-CONFIG.MAX_HISTORY_MESSAGES);
+    
+    return recentMessages.map(msg => ({
+      role: msg.dir === 'out' ? 'user' : 'assistant',
+      content: msg.text
+    }));
+  }
+
   // API
   async function callAPI(chatId, userText, history = []) {
     if (!CONFIG.USE_REAL_API) {
@@ -531,10 +534,19 @@
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
     try {
+      // =====================================================
+      // FIX: Include formatted history in the request body
+      // =====================================================
+      const formattedHistory = formatHistoryForAPI(history);
+      
       const res = await fetch(CONFIG.WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: userText }),
+        body: JSON.stringify({ 
+          text: userText,
+          history: formattedHistory,  // ✅ NOW INCLUDED!
+          chatId: chatId              // Also send chatId for context
+        }),
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -627,6 +639,10 @@
 
     showTyping();
 
+    // =====================================================
+    // FIX: Get history BEFORE adding the new message
+    // so the API gets the full context including the new message
+    // =====================================================
     const history = state.messages.get(chatId) || [];
     const response = await callAPI(chatId, text, history);
     const delay = CONFIG.USE_REAL_API ? 100 : CONFIG.TYPING_DELAY;
@@ -718,84 +734,91 @@ Turbo: "Ship TODAY. Fix later."
 Wolf: "What's the 10x play?"
 Luna: "Make sure you enjoy it."
 Captain: "Build safety first."
-Tempo: "Track your death cost."
-Wheat: "Is it a NEED?"
-Tommy: "Add more hype!"
-Architect: "Build the system."
 
-Hakim: "Two farmers. Same field. Only one slept well."
+→ Action: Pick ONE voice and follow their advice for 48 hours.`;
 
-→ Which voice will you follow?`;
+    const member = COUNCIL.find(c => c.id === chatId);
+    await addMessage(chatId, 'in', response.reply || fallbackResponse, {
+      tag: '🏛️ Council',
+      chips: [{ action: 'next', label: '→ Follow up' }]
+    });
 
-    await addMessage(chatId, 'in', response.reply || fallbackResponse, { tag: '🏛️ Council' });
     renderThread();
-    showToast('🏛️ Council assembled');
   }
 
-  // WhatsApp-style Reels with Queue
-  function openReelQueue(startReelId) {
-    const today = getDayKey();
-    const todayReels = Array.from(state.reels.values()).filter(r => r.day === today);
+  // Biometric unlock
+  async function attemptBiometricUnlock() {
+    try {
+      if (!window.PublicKeyCredential) {
+        showToast('⚠️ Biometrics not supported');
+        return;
+      }
+      
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: 'Money AI' },
+          user: { id: new Uint8Array(16), name: 'user', displayName: 'User' },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+          authenticatorSelection: { authenticatorAttachment: 'platform' }
+        }
+      });
+      
+      if (credential) unlockApp();
+    } catch (err) {
+      console.log('Biometric failed:', err);
+      showToast('⚠️ Try demo mode');
+    }
+  }
+
+  function unlockApp() {
+    state.isLocked = false;
+    DOM.lockScreen.classList.add('hidden');
+    DOM.app.classList.remove('hidden');
+    showToast('👋 Welcome to Money AI');
+  }
+
+  // Reels
+  function openReelQueue(contactId) {
+    const reelsArray = Array.from(state.reels.values());
+    const startIndex = reelsArray.findIndex(r => r.contactId === contactId);
+    if (startIndex === -1) return;
     
-    if (todayReels.length === 0) return;
+    state.reelQueue = reelsArray;
+    state.currentReelIndex = startIndex;
     
-    state.reelQueue = todayReels;
-    state.currentReelIndex = todayReels.findIndex(r => r.id === startReelId);
-    if (state.currentReelIndex === -1) state.currentReelIndex = 0;
-    
-    renderProgressSegments();
-    showCurrentReel();
     DOM.reelViewer.classList.add('open');
-  }
-
-  function renderProgressSegments() {
-    DOM.reelProgressSegments.innerHTML = state.reelQueue.map((_, i) => `
-      <div class="reel-segment ${i < state.currentReelIndex ? 'completed' : ''} ${i === state.currentReelIndex ? 'active' : ''}">
-        <div class="reel-segment-fill"></div>
-      </div>
-    `).join('');
+    showCurrentReel();
   }
 
   function showCurrentReel() {
     const reel = state.reelQueue[state.currentReelIndex];
     if (!reel) { closeReel(); return; }
     
-    const m = COUNCIL.find(c => c.id === reel.contactId);
-    if (!m) { closeReel(); return; }
-
-    DOM.reelAvatar.textContent = m.emoji;
-    DOM.reelAvatar.style.background = `linear-gradient(135deg,${m.accent},${m.accent}88)`;
-    DOM.reelAuthor.textContent = m.name;
-    DOM.reelRole.textContent = m.role;
+    const day = getDayKey();
+    markReelRead(day, reel.contactId);
+    
+    // Update progress segments
+    DOM.reelProgressSegments.innerHTML = state.reelQueue.map((_, i) => 
+      `<div class="reel-segment ${i < state.currentReelIndex ? 'viewed' : ''} ${i === state.currentReelIndex ? 'active' : ''}"></div>`
+    ).join('');
+    
+    DOM.reelAvatar.textContent = reel.emoji;
+    DOM.reelAvatar.style.background = `linear-gradient(135deg,${reel.accent},${reel.accent}66)`;
+    DOM.reelAuthor.textContent = reel.name;
+    DOM.reelRole.textContent = reel.role;
     DOM.reelTitle.textContent = reel.title;
     DOM.reelLines.innerHTML = reel.lines.map(l => `<p>${l}</p>`).join('');
-    DOM.reelCta.querySelector('.reel-cta-text').textContent = `DM me "${reel.hook}"`;
+    DOM.reelCta.textContent = `Reply with "${reel.hook}"`;
     DOM.reelReplyInput.value = '';
-    DOM.reelReplyInput.placeholder = `Reply "${reel.hook}"...`;
-
-    renderProgressSegments();
-    startReelProgress();
-    markReelRead(reel.day, reel.contactId);
-  }
-
-  function startReelProgress() {
+    DOM.reelReplyInput.placeholder = `Reply to ${reel.name}...`;
+    
+    // Auto-advance timer
     clearInterval(state.reelTimer);
-    
-    const activeSegment = DOM.reelProgressSegments.querySelector('.reel-segment.active .reel-segment-fill');
-    if (activeSegment) activeSegment.style.width = '0%';
-    
-    const start = Date.now();
-    state.reelTimer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(elapsed / CONFIG.REEL_DURATION, 1);
-      
-      if (activeSegment) activeSegment.style.width = `${progress * 100}%`;
-      
-      if (progress >= 1) {
-        clearInterval(state.reelTimer);
-        nextReel();
-      }
-    }, 50);
+    state.reelTimer = setInterval(nextReel, CONFIG.REEL_DURATION);
   }
 
   function nextReel() {
@@ -1014,7 +1037,7 @@ Hakim: "Two farmers. Same field. Only one slept well."
       renderStoriesStrip();
       renderChatList();
       setRoute('home');
-      console.log('🏛️ Money AI v3 ready');
+      console.log('🏛️ Money AI v3 ready (with history support)');
     } catch (err) {
       console.error('Init failed:', err);
       showToast('⚠️ Failed to initialize');
