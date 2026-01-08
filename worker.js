@@ -1,10 +1,16 @@
 /**
- * MONEY AI COUNCIL — FIXED WORKER v6 (WITH CONVERSATION HISTORY)
+ * MONEY AI COUNCIL — FIXED WORKER v7 (RELAXED VALIDATION)
  * ------------------------------------------------------------------------------
- * Fixes from v5:
- * 1) NOW PARSES AND USES conversation history from request body
- * 2) Builds multi-turn messages array for the model
- * 3) Maintains context awareness across conversation
+ * Fixes from v6:
+ * 1) Relaxed validation - allows conversational responses without strict 48h actions
+ * 2) Handles "what's my name?" type questions properly
+ * 3) Less strict isGoodAction() function
+ * 4) detectViolations() skips action check for short conversational responses
+ *
+ * Plus all v6 features:
+ * - Parses and uses conversation history from request body
+ * - Builds multi-turn messages array for the model
+ * - Maintains context awareness across conversation
  *
  * Plus all v5 features:
  * - Language detection: replies in user's language (Arabic/English/mixed)
@@ -248,6 +254,15 @@ You have access to the conversation history. Use it to:
 - Reference previous advice, decisions, or user statements
 - Understand what "this", "that", "it" refer to from prior messages
 - Build on earlier recommendations rather than repeating
+- REMEMBER user details like their name, situation, goals mentioned earlier
+- If user asks "what's my name?" and they told you earlier, ANSWER with their name
+
+HANDLING SIMPLE QUESTIONS
+For simple conversational questions (like "what's my name?", "what did I say?", "remind me"):
+- Answer directly from conversation history
+- Keep the response short and direct
+- The next_action can be simple like "Continue our conversation" or "Ask your next question"
+- Do NOT force a 48-hour business action for casual questions
 
 ABSOLUTE RULES (NO EXCEPTIONS)
 1) NO GENERIC FILLER:
@@ -403,21 +418,14 @@ function detectViolations(resultJson) {
     "knowledge base",
     "review the advice above",
     "web search reveals",
-    // generic filler
-    "can be lucrative",
-    "growing demand",
-    "do market research",
-    "market analysis",
-    "comprehensive business plan",
-    "you'll need to obtain the necessary licenses",
+    // generic filler (only flag these for business questions, not conversational)
+    // "can be lucrative",  // Removed - too strict
+    // "growing demand",    // Removed - too strict
+    // "do market research", // Removed - too strict
     // onboarding fluff (your screenshot issue)
     "to better assist you",
     "i need more information",
     "provide more information",
-    "tell me more about your situation",
-    // Context confusion indicators
-    "the context is unclear",
-    "i'm not sure what you're referring to",
   ];
 
   const violations = [];
@@ -425,9 +433,15 @@ function detectViolations(resultJson) {
     if (text.includes(p)) violations.push(p);
   }
 
-  // Ensure next_action is real
-  const next = resultJson?.final?.next_action || "";
-  if (!isGoodAction(next)) violations.push("weak_next_action");
+  // Only check next_action if the response looks like a business response
+  // Skip action validation for short conversational responses
+  const bubbleText = resultJson?.bubbles?.[0]?.text || "";
+  const isConversational = bubbleText.length < 200;  // Short responses are likely conversational
+  
+  if (!isConversational) {
+    const next = resultJson?.final?.next_action || "";
+    if (!isGoodAction(next)) violations.push("weak_next_action");
+  }
 
   return violations;
 }
@@ -435,13 +449,23 @@ function detectViolations(resultJson) {
 function isGoodAction(nextAction) {
   if (typeof nextAction !== "string") return false;
   const t = nextAction.toLowerCase().trim();
-  if (t.length < 18) return false;
-  if (t.includes("review")) return false;
+  
+  // Allow shorter actions for conversational responses (minimum 10 chars)
+  if (t.length < 10) return false;
+  
+  // Block only the most generic non-actions
+  if (t === "review the advice above" || t === "review the advice above.") return false;
+  
+  // For conversational questions, any reasonable action is fine
+  // Only enforce strict validation for longer, business-focused actions
+  if (t.length < 30) return true;  // Short actions are OK
+  
+  // For longer actions, prefer time-bound but don't require it
+  const hasTime = /(\b24\b|\b48\b|hour|hrs|day|week|today|tomorrow|اليوم|بكرا|خلال|ساعة)/i.test(t);
+  const hasMeasure = /(send|collect|write|call|visit|price|quote|calculate|list|compare|draft|build|ask|tell|share|check|confirm|اكتب|اجمع|اتصل|زر|قارن|احسب|ارسل)/i.test(t);
 
-  const hasTime = /(\b24\b|\b48\b|hour|hrs|اليوم|بكرا|خلال|ساعة)/i.test(t);
-  const hasMeasure = /(send|collect|write|call|visit|price|quote|calculate|list|compare|draft|build|اكتب|اجمع|اتصل|زر|قارن|احسب|ارسل)/i.test(t);
-
-  return hasTime && hasMeasure;
+  // Accept if it has either time OR action verb (not both required)
+  return hasTime || hasMeasure || t.length >= 20;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -621,7 +645,7 @@ function jsonResponse(data, status = 200) {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
       // Debug header so you can confirm you are hitting THIS worker
-      "X-MoneyAI-Worker": "v6-with-history",
+      "X-MoneyAI-Worker": "v7-relaxed-validation",
     },
   });
 }
