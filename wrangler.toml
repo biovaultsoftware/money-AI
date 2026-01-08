@@ -1,5 +1,5 @@
 name = "human1stai"
-main = "worker-with-search.js"
+main = "worker.js"
 compatibility_date = "2024-01-01"
 
 # AI Binding (Required for Workers AI)
