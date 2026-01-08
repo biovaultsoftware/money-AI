@@ -236,7 +236,7 @@
       });
     }
   };
-
+ 
   // Theme management
   function updateTheme() {
     const score = state.prefs.richScore;
