@@ -515,22 +515,42 @@
   // FIX: Format conversation history for API
   // =====================================================
   function formatHistoryForAPI(messages) {
-    if (!messages || !messages.length) return [];
+    console.log('🔄 formatHistoryForAPI called');
+    console.log('📥 Raw messages count:', messages?.length || 0);
+    console.log('📥 Raw messages:', messages);
+    
+    if (!messages || !messages.length) {
+      console.log('⚠️ No messages to format - returning empty array');
+      return [];
+    }
     
     // Take the last N messages to avoid token overflow
     const recentMessages = messages.slice(-CONFIG.MAX_HISTORY_MESSAGES);
+    console.log('📊 Recent messages (last', CONFIG.MAX_HISTORY_MESSAGES, '):', recentMessages);
     
-    return recentMessages.map(msg => ({
+    const formatted = recentMessages.map(msg => ({
       role: msg.dir === 'out' ? 'user' : 'assistant',
       content: msg.text
     }));
+    
+    console.log('✅ Formatted history:', formatted);
+    return formatted;
   }
 
   // API
   async function callAPI(chatId, userText, history = []) {
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🚀 callAPI START');
+    console.log('📍 Chat ID:', chatId);
+    console.log('💬 User text:', userText);
+    console.log('📜 History array length:', history?.length || 0);
+    console.log('📜 History array:', history);
+    
     if (!CONFIG.USE_REAL_API) {
+      console.log('⚠️ Using mock API (USE_REAL_API is false)');
       return { reply: getMockReply(chatId, userText), focus: 'general', scoreDelta: calculateDelta(userText), mode: 'reply' };
     }
+    
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
     try {
@@ -539,19 +559,30 @@
       // =====================================================
       const formattedHistory = formatHistoryForAPI(history);
       
+      const requestBody = { 
+        text: userText,
+        history: formattedHistory,  // ✅ NOW INCLUDED!
+        chatId: chatId              // Also send chatId for context
+      };
+      
+      console.log('📤 REQUEST BODY:', JSON.stringify(requestBody, null, 2));
+      console.log('🌐 Sending to:', CONFIG.WORKER_URL);
+      
       const res = await fetch(CONFIG.WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: userText,
-          history: formattedHistory,  // ✅ NOW INCLUDED!
-          chatId: chatId              // Also send chatId for context
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
+      
       clearTimeout(timeout);
+      console.log('📡 Response status:', res.status, res.statusText);
+      
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data = await res.json();
+      
+      console.log('📥 RESPONSE DATA:', JSON.stringify(data, null, 2));
+      console.log('═══════════════════════════════════════════════════');
       
       if (data.bubbles && data.bubbles.length > 0) {
         const reply = data.bubbles.map(b => {
@@ -643,7 +674,15 @@
     // FIX: Get history BEFORE adding the new message
     // so the API gets the full context including the new message
     // =====================================================
+    console.log('💾 Getting history for chatId:', chatId);
+    console.log('💾 state.messages.has(chatId):', state.messages.has(chatId));
+    console.log('💾 state.messages Map keys:', Array.from(state.messages.keys()));
+    
     const history = state.messages.get(chatId) || [];
+    
+    console.log('💾 Retrieved history length:', history.length);
+    console.log('💾 Retrieved history:', history);
+    
     const response = await callAPI(chatId, text, history);
     const delay = CONFIG.USE_REAL_API ? 100 : CONFIG.TYPING_DELAY;
     await new Promise(r => setTimeout(r, delay));
@@ -681,9 +720,22 @@
       id: `${chatId}:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
       chatId, dir, text, ts: Date.now(), ...opts
     };
+    
+    console.log('💾 addMessage called - chatId:', chatId, 'dir:', dir);
+    console.log('💾 Message being saved:', msg);
+    
     await DB.put('messages', msg);
-    if (!state.messages.has(chatId)) state.messages.set(chatId, []);
+    
+    console.log('✅ Message saved to IndexedDB');
+    
+    if (!state.messages.has(chatId)) {
+      console.log('📝 Creating new messages array for chatId:', chatId);
+      state.messages.set(chatId, []);
+    }
+    
     state.messages.get(chatId).push(msg);
+    console.log('✅ Message added to state.messages - total count:', state.messages.get(chatId).length);
+    
     return msg;
   }
 
