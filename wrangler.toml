@@ -1,4 +1,4 @@
-name = "moneyai-council"
+name = "human1stai"
 main = "worker-with-search.js"
 compatibility_date = "2024-01-01"
 
