@@ -51,10 +51,19 @@ export default {
     if (!userText && request.method === "POST") {
       try {
         const body = await request.json();
+        
+        // ✅ LOGGING: What did we receive?
+        console.log('═══════════════════════════════════════');
+        console.log('🔍 WORKER RECEIVED REQUEST');
+        console.log('📥 Request body:', JSON.stringify(body, null, 2));
+        
         userText = body.text || body.message || body.query;
         
         // ✅ NEW: Extract conversation history from request
         if (Array.isArray(body.history)) {
+          console.log('📜 Raw history array length:', body.history.length);
+          console.log('📜 Raw history:', JSON.stringify(body.history, null, 2));
+          
           conversationHistory = body.history
             .filter(msg => msg && msg.role && msg.content)
             .map(msg => ({
@@ -62,10 +71,19 @@ export default {
               content: String(msg.content || '').slice(0, 2000)  // Limit length
             }))
             .slice(-20);  // Keep last 20 messages max
+          
+          console.log('✅ Processed history length:', conversationHistory.length);
+          console.log('✅ Processed history:', JSON.stringify(conversationHistory, null, 2));
+        } else {
+          console.log('⚠️ NO HISTORY in request body (or not an array)');
         }
         
         chatId = body.chatId || null;
-      } catch (_) {}
+        console.log('📍 Chat ID:', chatId);
+        console.log('═══════════════════════════════════════');
+      } catch (_) {
+        console.log('❌ Error parsing request body:', _.message);
+      }
     }
 
     if (!userText) userText = "Explain Rush → Rich in one practical example.";
@@ -137,6 +155,7 @@ export default {
         personaKey: router.character,
       });
 
+      console.log('✅ Final result to return:', JSON.stringify(result, null, 2));
       return jsonResponse(result, 200);
     } catch (e) {
       return jsonResponse(
@@ -356,18 +375,27 @@ QC REGENERATION REQUIRED:
     // =====================================================
     // ✅ FIX: Build messages array WITH conversation history
     // =====================================================
+    console.log('🤖 Building messages array for AI...');
+    console.log('📜 Input conversation history length:', conversationHistory.length);
+    
     const messages = [
       { role: "system", content: systemPrompt + "\n\n" + qcAddon + "\n" + violationHint },
     ];
     
+    console.log('✅ Added system prompt');
+    
     // Add conversation history (if any)
     if (conversationHistory && conversationHistory.length > 0) {
+      console.log('📜 Adding', conversationHistory.length, 'history messages to array');
       for (const msg of conversationHistory) {
         messages.push({
           role: msg.role,
           content: msg.content
         });
       }
+      console.log('✅ History added to messages array');
+    } else {
+      console.log('⚠️ No conversation history to add');
     }
     
     // Add the current user message (may already be in history, but ensures it's the last)
@@ -376,10 +404,19 @@ QC REGENERATION REQUIRED:
     const currentMsgAlreadyInHistory = lastHistoryMsg?.role === 'user' && lastHistoryMsg?.content === originalUserMessage;
     
     if (!currentMsgAlreadyInHistory) {
+      console.log('➕ Adding current message to array:', originalUserMessage);
       messages.push({ role: "user", content: originalUserMessage });
+    } else {
+      console.log('⏭️ Current message already in history, skipping');
     }
-
+    
+    console.log('📊 Final messages array length:', messages.length);
+    console.log('📊 Final messages array:', JSON.stringify(messages, null, 2));
+    console.log('🚀 Calling AI model...');
+    
     const response = await env.AI.run(model, { messages });
+    
+    console.log('📥 AI Response received:', JSON.stringify(response, null, 2));
 
     let rawText = stripCodeFences(extractText(response)).trim();
 
