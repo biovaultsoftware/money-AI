@@ -1,12 +1,17 @@
 /**
- * MONEY AI COUNCIL — FIXED WORKER v5 (Language + QC-safe + Truth-Gated + Validation)
+ * MONEY AI COUNCIL — FIXED WORKER v6 (WITH CONVERSATION HISTORY)
  * ------------------------------------------------------------------------------
- * Fixes:
- * 1) Language detection: replies in user's language (Arabic/English/mixed)
- * 2) Query rewrite outputs user_language and keeps normalized_query in same language
- * 3) QC retry NEVER appended to user text (prevents English override)
- * 4) Blocks onboarding fluff ("to better assist you...") via system rules + validator
- * 5) Keeps truth-gating: no "PDF knowledge base" unless excerpts exist
+ * Fixes from v5:
+ * 1) NOW PARSES AND USES conversation history from request body
+ * 2) Builds multi-turn messages array for the model
+ * 3) Maintains context awareness across conversation
+ *
+ * Plus all v5 features:
+ * - Language detection: replies in user's language (Arabic/English/mixed)
+ * - Query rewrite outputs user_language and keeps normalized_query in same language
+ * - QC retry NEVER appended to user text (prevents English override)
+ * - Blocks onboarding fluff ("to better assist you...") via system rules + validator
+ * - Truth-gating: no "PDF knowledge base" unless excerpts exist
  *
  * ENV:
  * - env.AI (Workers AI binding)
@@ -30,15 +35,30 @@ export default {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Parse input
+    // Parse input (NOW WITH HISTORY SUPPORT)
     // ─────────────────────────────────────────────────────────────
     const url = new URL(request.url);
     let userText = url.searchParams.get("text");
+    let conversationHistory = [];  // ✅ NEW: Parse conversation history
+    let chatId = null;
 
     if (!userText && request.method === "POST") {
       try {
         const body = await request.json();
         userText = body.text || body.message || body.query;
+        
+        // ✅ NEW: Extract conversation history from request
+        if (Array.isArray(body.history)) {
+          conversationHistory = body.history
+            .filter(msg => msg && msg.role && msg.content)
+            .map(msg => ({
+              role: msg.role === 'user' ? 'user' : 'assistant',
+              content: String(msg.content || '').slice(0, 2000)  // Limit length
+            }))
+            .slice(-20);  // Keep last 20 messages max
+        }
+        
+        chatId = body.chatId || null;
       } catch (_) {}
     }
 
@@ -101,12 +121,13 @@ export default {
       });
 
       // ─────────────────────────────────────────────────────────────
-      // STEP 4: CALL MODEL + VALIDATE + AUTO-RETRY (QC appended to SYSTEM ONLY)
+      // STEP 4: CALL MODEL WITH HISTORY + VALIDATE + AUTO-RETRY
       // ─────────────────────────────────────────────────────────────
       const result = await generateWithValidation(env, {
         model: MODEL_GENERATION,
         systemPrompt,
-        userMessage: userText, // <- ALWAYS original user text (do not mutate)
+        userMessage: userText,
+        conversationHistory,  // ✅ NEW: Pass history to generation
         personaKey: router.character,
       });
 
@@ -171,7 +192,7 @@ CRITICAL LANGUAGE RULE:
 
 TOOL POLICY:
 - use_internal_rag = true for anything involving business decisions, ideas, execution, Rush→Rich, Wheat/Tomato, SHE, ECF, motivators.
-- use_web_search = true ONLY if fresh external facts are needed (licenses, permits, regulations, prices, addresses, current rules, “today/latest”, official requirements).
+- use_web_search = true ONLY if fresh external facts are needed (licenses, permits, regulations, prices, addresses, current rules, "today/latest", official requirements).
 
 OUTPUT JSON ONLY. No prose.
 
@@ -221,9 +242,16 @@ ROLE
 You are a business + mindset execution engine. You move users from RUSH thinking to RICH thinking.
 Your job: (1) diagnosis, (2) decision framework applied to this case, (3) ONE measurable next action.
 
+CONVERSATION CONTEXT
+You have access to the conversation history. Use it to:
+- Maintain context and remember what was discussed
+- Reference previous advice, decisions, or user statements
+- Understand what "this", "that", "it" refer to from prior messages
+- Build on earlier recommendations rather than repeating
+
 ABSOLUTE RULES (NO EXCEPTIONS)
 1) NO GENERIC FILLER:
-   Never write vague phrases like “can be lucrative”, “growing demand”, “do market research”, “get necessary licenses”, “create a comprehensive business plan”.
+   Never write vague phrases like "can be lucrative", "growing demand", "do market research", "get necessary licenses", "create a comprehensive business plan".
    Every line must reduce uncertainty or force a decision.
 
 2) NO ONBOARDING / NO THERAPIST MODE:
@@ -243,7 +271,7 @@ ABSOLUTE RULES (NO EXCEPTIONS)
    - time-boxed (≤ 48 hours)
    - binary (done / not done)
    - measurable (clear success criteria)
-   Never output “Review the advice above.”
+   Never output "Review the advice above."
 
 6) SAFETY:
    No legal/tax/regulated financial advice. Give general educational guidance + suggest consulting professionals when needed. No guarantees.
@@ -284,9 +312,9 @@ Now answer the user message. Output JSON ONLY.
 }
 
 /* ─────────────────────────────────────────────────────────────
- * GENERATION WITH VALIDATION + AUTO-RETRY (QC SYSTEM ONLY)
+ * GENERATION WITH VALIDATION + AUTO-RETRY (NOW WITH HISTORY)
  * ───────────────────────────────────────────────────────────── */
-async function generateWithValidation(env, { model, systemPrompt, userMessage, personaKey }) {
+async function generateWithValidation(env, { model, systemPrompt, userMessage, conversationHistory = [], personaKey }) {
   const MAX_ATTEMPTS = 3;
 
   // Never mutate original user message; keep it stable to preserve language.
@@ -310,19 +338,40 @@ QC REGENERATION REQUIRED:
 
     const violationHint = lastParsed ? `\nVIOLATIONS TO FIX: ${detectViolations(lastParsed).join(", ")}\n` : "";
 
-    const response = await env.AI.run(model, {
-      messages: [
-        { role: "system", content: systemPrompt + "\n\n" + qcAddon + "\n" + violationHint },
-        { role: "user", content: originalUserMessage },
-      ],
-    });
+    // =====================================================
+    // ✅ FIX: Build messages array WITH conversation history
+    // =====================================================
+    const messages = [
+      { role: "system", content: systemPrompt + "\n\n" + qcAddon + "\n" + violationHint },
+    ];
+    
+    // Add conversation history (if any)
+    if (conversationHistory && conversationHistory.length > 0) {
+      for (const msg of conversationHistory) {
+        messages.push({
+          role: msg.role,
+          content: msg.content
+        });
+      }
+    }
+    
+    // Add the current user message (may already be in history, but ensures it's the last)
+    // Only add if not already the last message in history
+    const lastHistoryMsg = conversationHistory[conversationHistory.length - 1];
+    const currentMsgAlreadyInHistory = lastHistoryMsg?.role === 'user' && lastHistoryMsg?.content === originalUserMessage;
+    
+    if (!currentMsgAlreadyInHistory) {
+      messages.push({ role: "user", content: originalUserMessage });
+    }
+
+    const response = await env.AI.run(model, { messages });
 
     let rawText = stripCodeFences(extractText(response)).trim();
 
     const parsed = safeJsonParse(rawText);
     if (!parsed) {
       if (attempt < MAX_ATTEMPTS) continue;
-      return hardFallback(personaKey, "I couldn’t format JSON. Re-ask in one sentence.");
+      return hardFallback(personaKey, "I couldn't format JSON. Re-ask in one sentence.");
     }
 
     const cleaned = cleanResponseStrict(parsed, personaKey);
@@ -366,6 +415,9 @@ function detectViolations(resultJson) {
     "i need more information",
     "provide more information",
     "tell me more about your situation",
+    // Context confusion indicators
+    "the context is unclear",
+    "i'm not sure what you're referring to",
   ];
 
   const violations = [];
@@ -569,7 +621,7 @@ function jsonResponse(data, status = 200) {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
       // Debug header so you can confirm you are hitting THIS worker
-      "X-MoneyAI-Worker": "v5-lang-qc-safe",
+      "X-MoneyAI-Worker": "v6-with-history",
     },
   });
 }
@@ -608,7 +660,7 @@ function runRoutingLogic(text) {
   if (t.includes("story") || t.includes("wisdom")) return { character: "HAKIM", killSwitchTriggered: false };
 
   // Arabic routing keywords
-  if (/[\\u0600-\\u06FF]/.test(text || "")) {
+  if (/[\u0600-\u06FF]/.test(text || "")) {
     if (/(مخاطر|آمن|امان)/.test(text)) return { character: "THE_CAPTAIN", killSwitchTriggered: false };
     if (/(سريع|الآن|بسرعة)/.test(text)) return { character: "TURBO", killSwitchTriggered: false };
     if (/(وقت|ساعات|تدقيق)/.test(text)) return { character: "TEMPO", killSwitchTriggered: false };
