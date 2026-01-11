@@ -1038,21 +1038,60 @@
       if (DOM.sessionLimit) DOM.sessionLimit.classList.toggle('warning', (thread.userMessageCount || 0) >= CONFIG.SESSION_LIMIT - 2);
     }
 
-    async function callAPI(chatId, userText) {
-      if (!CONFIG.USE_REAL_API) return { reply: getMockReply(chatId) };
+    // ✅ NEW: Format conversation history for API
+    function formatHistoryForAPI(messages) {
+      console.log('🔄 formatHistoryForAPI called with', messages?.length || 0, 'messages');
+      if (!messages || !messages.length) return [];
+      
+      const recentMessages = messages.slice(-20); // Last 20 messages
+      const formatted = recentMessages.map(msg => ({
+        role: msg.dir === 'out' ? 'user' : 'assistant',
+        content: msg.text
+      }));
+      
+      console.log('✅ Formatted', formatted.length, 'history messages');
+      return formatted;
+    }
+
+    async function callAPI(chatId, userText, history = []) {
+      console.log('═══════════════════════════════════════');
+      console.log('🚀 callAPI START');
+      console.log('📍 chatId:', chatId);
+      console.log('💬 userText:', userText);
+      console.log('📜 history length:', history?.length || 0);
+      
+      if (!CONFIG.USE_REAL_API) {
+        console.log('⚠️ Using mock API');
+        return { reply: getMockReply(chatId) };
+      }
       
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), CONFIG.API_TIMEOUT);
       try {
+        const formattedHistory = formatHistoryForAPI(history);
+        const requestBody = { 
+          text: userText,
+          history: formattedHistory,  // ✅ NOW SENDING HISTORY!
+          chatId: chatId
+        };
+        
+        console.log('📤 REQUEST BODY:', JSON.stringify(requestBody, null, 2));
+        console.log('🌐 Sending to:', CONFIG.WORKER_URL);
+        
         const res = await fetch(CONFIG.WORKER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: userText }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal
         });
+        
         clearTimeout(timeout);
+        console.log('📡 Response status:', res.status, res.statusText);
+        
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data = await res.json();
+        console.log('📥 RESPONSE DATA:', JSON.stringify(data, null, 2));
+        console.log('═══════════════════════════════════════');
         
         if (data.bubbles?.length) {
           const reply = data.bubbles.map(b => {
@@ -1060,14 +1099,18 @@
             if (typeof text === 'object') text = text.content || JSON.stringify(text);
             return String(text || '');
           }).join('\n\n');
+          console.log('✅ Returning bubbles reply');
           return { reply: reply || getMockReply(chatId) };
         }
         
         let fallback = data.reply || data.response || data.text;
         if (typeof fallback === 'object') fallback = fallback.content || JSON.stringify(fallback);
+        console.log('✅ Returning fallback reply');
         return { reply: fallback || getMockReply(chatId) };
       } catch (err) {
         clearTimeout(timeout);
+        console.error('❌ API ERROR:', err);
+        console.log('⚠️ Using mock reply as fallback');
         return { reply: getMockReply(chatId) };
       }
     }
@@ -1089,11 +1132,31 @@
     }
 
     async function sendMessage() {
-      if (state.isSending) return;
+      console.log('🚨 sendMessage() CALLED');
+      console.log('📌 state.isSending:', state.isSending);
+      
+      if (state.isSending) {
+        console.log('⚠️ EARLY EXIT: Already sending');
+        return;
+      }
+      
       const chatId = state.activeChatId;
-      if (!chatId) return;
+      console.log('📌 activeChatId:', chatId);
+      
+      if (!chatId) {
+        console.log('⚠️ EARLY EXIT: No active chat');
+        return;
+      }
+      
       const text = DOM.msgInput.value.trim();
-      if (!text) return;
+      console.log('📌 Message text:', text);
+      
+      if (!text) {
+        console.log('⚠️ EARLY EXIT: Empty message');
+        return;
+      }
+      
+      console.log('✅ All checks passed, proceeding...');
 
       const thread = state.threads.get(chatId);
       if ((thread?.userMessageCount || 0) >= CONFIG.SESSION_LIMIT) {
@@ -1117,7 +1180,12 @@
 
       showTyping();
 
-      const response = await callAPI(chatId, text);
+      // ✅ NEW: Get conversation history and pass to API
+      console.log('💾 Getting history for chatId:', chatId);
+      const history = state.messages.get(chatId) || [];
+      console.log('💾 History length:', history.length);
+      
+      const response = await callAPI(chatId, text, history);  // ✅ NOW PASSING HISTORY!
       await new Promise(r => setTimeout(r, CONFIG.TYPING_DELAY));
       hideTyping();
 
@@ -1309,7 +1377,10 @@ Architect: "Build system."
     }
 
     function openChat(chatId) {
+      console.log('💬 Opening chat:', chatId);
       state.activeChatId = chatId;
+      console.log('✅ activeChatId set to:', state.activeChatId);
+      
       const m = COUNCIL.find(c => c.id === chatId);
       const thread = state.threads.get(chatId);
 
@@ -1377,9 +1448,17 @@ Architect: "Build system."
         DOM.btnSend.disabled = !DOM.msgInput.value.trim();
       };
       DOM.msgInput.onkeydown = e => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        if (e.key === 'Enter' && !e.shiftKey) { 
+          console.log('⌨️ Enter pressed, calling sendMessage()');
+          e.preventDefault(); 
+          sendMessage(); 
+        }
       };
-      DOM.btnSend.onclick = sendMessage;
+      DOM.btnSend.onclick = () => {
+        console.log('🖱️ Send button clicked, calling sendMessage()');
+        sendMessage();
+      };
+      console.log('✅ Message event handlers attached');
       DOM.quickActions.onclick = e => {
         const btn = e.target.closest('.quick-btn');
         if (btn) handleChip(btn.dataset.action);
@@ -1403,13 +1482,26 @@ Architect: "Build system."
     }
 
     function init() {
+      console.log('═══════════════════════════════════════');
+      console.log('🏛️ MONEY AI v3.1 WITH HISTORY SUPPORT');
+      console.log('📅', new Date().toISOString());
+      console.log('═══════════════════════════════════════');
+      
       cacheDom();
+      console.log('✅ DOM cached');
+      
       loadData();
+      console.log('✅ Data loaded');
+      
       bindEvents();
+      console.log('✅ Events bound');
+      
       renderStoriesStrip();
       renderChatList();
       setRoute('home');
-      console.log('🏛️ Money AI ready');
+      
+      console.log('✅ MONEY AI READY WITH FULL LOGGING');
+      console.log('═══════════════════════════════════════');
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
