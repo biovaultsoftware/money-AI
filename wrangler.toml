@@ -6,6 +6,11 @@ compatibility_date = "2024-01-01"
 [ai]
 binding = "AI"
 
+# Vectorize Binding (For RAG/Knowledge Base)
+[[vectorize]]
+binding = "MONEYAI_VECTORIZE"
+index_name = "moneyai-knowledge"
+
 # Secrets (set via wrangler secret put)
 # TAVILY_API_KEY - for web search
 # BRAVE_API_KEY - alternative search
