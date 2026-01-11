@@ -27,10 +27,18 @@
 
 export default {
   async fetch(request, env) {
+    console.log('╔═══════════════════════════════════════════════════════════════╗');
+    console.log('║          WORKER REQUEST START                                 ║');
+    console.log('╚═══════════════════════════════════════════════════════════════╝');
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log('🌐 Method:', request.method);
+    console.log('🔗 URL:', request.url);
+    
     // ─────────────────────────────────────────────────────────────
     // CORS
     // ─────────────────────────────────────────────────────────────
     if (request.method === "OPTIONS") {
+      console.log('✅ Handling OPTIONS (CORS preflight)');
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
@@ -43,6 +51,7 @@ export default {
     // ─────────────────────────────────────────────────────────────
     // Parse input (NOW WITH HISTORY SUPPORT)
     // ─────────────────────────────────────────────────────────────
+    console.log('\n📥 PARSING REQUEST BODY...');
     const url = new URL(request.url);
     let userText = url.searchParams.get("text");
     let conversationHistory = [];  // ✅ NEW: Parse conversation history
@@ -52,17 +61,14 @@ export default {
       try {
         const body = await request.json();
         
-        // ✅ LOGGING: What did we receive?
-        console.log('═══════════════════════════════════════');
-        console.log('🔍 WORKER RECEIVED REQUEST');
-        console.log('📥 Request body:', JSON.stringify(body, null, 2));
+        console.log('📦 Raw request body:', JSON.stringify(body, null, 2));
         
         userText = body.text || body.message || body.query;
+        console.log('💬 Extracted userText:', userText);
         
         // ✅ NEW: Extract conversation history from request
         if (Array.isArray(body.history)) {
-          console.log('📜 Raw history array length:', body.history.length);
-          console.log('📜 Raw history:', JSON.stringify(body.history, null, 2));
+          console.log('📜 Found history array with', body.history.length, 'messages');
           
           conversationHistory = body.history
             .filter(msg => msg && msg.role && msg.content)
@@ -72,37 +78,56 @@ export default {
             }))
             .slice(-20);  // Keep last 20 messages max
           
-          console.log('✅ Processed history length:', conversationHistory.length);
-          console.log('✅ Processed history:', JSON.stringify(conversationHistory, null, 2));
+          console.log('✅ Processed history:', conversationHistory.length, 'messages');
+          conversationHistory.forEach((msg, i) => {
+            console.log(`  [${i}] ${msg.role}: ${msg.content.slice(0, 60)}...`);
+          });
         } else {
-          console.log('⚠️ NO HISTORY in request body (or not an array)');
+          console.log('⚠️ NO HISTORY in request (or not an array)');
         }
         
         chatId = body.chatId || null;
         console.log('📍 Chat ID:', chatId);
-        console.log('═══════════════════════════════════════');
-      } catch (_) {
-        console.log('❌ Error parsing request body:', _.message);
+      } catch (err) {
+        console.error('❌ Error parsing request body:', err.message);
       }
     }
 
-    if (!userText) userText = "Explain Rush → Rich in one practical example.";
+    if (!userText) {
+      console.log('⚠️ No userText provided, using default');
+      userText = "Explain Rush → Rich in one practical example.";
+    }
+    
+    console.log('✅ Final userText:', userText);
 
     // ─────────────────────────────────────────────────────────────
     // Language detect (fast + deterministic)
     // ─────────────────────────────────────────────────────────────
+    console.log('\n🌍 LANGUAGE DETECTION...');
     const detectedLang = detectUserLanguage(userText);
+    console.log('✅ Detected language:', detectedLang);
 
     // ─────────────────────────────────────────────────────────────
     // Route persona
     // ─────────────────────────────────────────────────────────────
+    console.log('\n🎭 ROUTING TO PERSONA...');
     const router = runRoutingLogic(userText);
+    console.log('✅ Selected character:', router.character);
+    console.log('⚡ Kill switch triggered:', router.killSwitchTriggered);
 
     try {
       // ─────────────────────────────────────────────────────────────
       // STEP 0: QUERY REWRITE (tool gating + normalized query + language)
       // ─────────────────────────────────────────────────────────────
+      console.log('\n' + '═'.repeat(65));
+      console.log('STEP 0: QUERY REWRITE');
+      console.log('═'.repeat(65));
+      console.log('📝 Input query:', userText);
+      console.log('🌍 Detected language:', detectedLang);
+      
       const rewrite = await runQueryRewrite(env, userText, detectedLang);
+      
+      console.log('✅ Rewrite result:', JSON.stringify(rewrite, null, 2));
 
       const normalizedQuery = rewrite?.normalized_query || userText;
       const useInternalRag = rewrite?.use_internal_rag ?? true;
@@ -110,32 +135,72 @@ export default {
 
       // language from rewrite (preferred), else fallback to detectedLang
       const userLanguage = rewrite?.user_language || detectedLang;
+      
+      console.log('📌 Normalized query:', normalizedQuery);
+      console.log('🔍 Use internal RAG:', useInternalRag);
+      console.log('🌐 Use web search:', useWebSearch);
+      console.log('🗣️ User language:', userLanguage);
 
       // ─────────────────────────────────────────────────────────────
       // STEP 1: INTERNAL RAG (Vectorize optional)
       // ─────────────────────────────────────────────────────────────
+      console.log('\n' + '═'.repeat(65));
+      console.log('STEP 1: INTERNAL RAG (VECTORIZE)');
+      console.log('═'.repeat(65));
+      
       let internalExcerptsBlock = "";
       if (useInternalRag) {
+        console.log('🔎 Querying Vectorize with:', normalizedQuery);
         const internalExcerpts = await retrieveInternalExcerpts(env, normalizedQuery, 8);
+        console.log('📊 Retrieved', internalExcerpts.length, 'excerpts');
+        
+        internalExcerpts.forEach((excerpt, i) => {
+          console.log(`  [${i}] chunk_id: ${excerpt.chunk_id}, score: ${excerpt.score?.toFixed(3)}`);
+          console.log(`      source: ${excerpt.source}`);
+          console.log(`      text: ${excerpt.text.slice(0, 100)}...`);
+        });
+        
         internalExcerptsBlock = formatInternalExcerpts(internalExcerpts);
+        console.log('✅ RAG context size:', internalExcerptsBlock.length, 'chars');
+      } else {
+        console.log('⏭️ Skipping internal RAG (not needed for this query)');
       }
 
       // ─────────────────────────────────────────────────────────────
       // STEP 2: WEB SEARCH (ONLY if rewrite says so)
       // ─────────────────────────────────────────────────────────────
+      console.log('\n' + '═'.repeat(65));
+      console.log('STEP 2: WEB SEARCH');
+      console.log('═'.repeat(65));
+      
       let webContextBlock = "";
       if (useWebSearch && env.TAVILY_API_KEY) {
+        console.log('🌐 Searching web with Tavily:', normalizedQuery);
         try {
           const searchResults = await searchWeb(normalizedQuery, env.TAVILY_API_KEY);
-          if (searchResults) webContextBlock = `\n\nWEB SEARCH RESULTS (external):\n${searchResults}\n`;
+          if (searchResults) {
+            webContextBlock = `\n\nWEB SEARCH RESULTS (external):\n${searchResults}\n`;
+            console.log('✅ Web search results:', searchResults.slice(0, 200), '...');
+            console.log('📊 Web context size:', webContextBlock.length, 'chars');
+          } else {
+            console.log('⚠️ Web search returned no results');
+          }
         } catch (e) {
-          console.log("Web search failed:", e?.message || e);
+          console.error("❌ Web search failed:", e?.message || e);
         }
+      } else if (useWebSearch && !env.TAVILY_API_KEY) {
+        console.log('⚠️ Web search requested but TAVILY_API_KEY not configured');
+      } else {
+        console.log('⏭️ Skipping web search (not needed for this query)');
       }
 
       // ─────────────────────────────────────────────────────────────
       // STEP 3: BUILD SINGLE SYSTEM PROMPT
       // ─────────────────────────────────────────────────────────────
+      console.log('\n' + '═'.repeat(65));
+      console.log('STEP 3: BUILD SYSTEM PROMPT');
+      console.log('═'.repeat(65));
+      
       const systemPrompt = buildMoneyAIGenerationSystemPrompt({
         personaKey: router.character,
         personaText: PERSONAS[router.character],
@@ -143,10 +208,28 @@ export default {
         webContextBlock,
         userLanguage,
       });
+      
+      console.log('🎭 Persona:', router.character);
+      console.log('📝 System prompt size:', systemPrompt.length, 'chars');
+      console.log('📦 Context breakdown:');
+      console.log('  - RAG excerpts:', internalExcerptsBlock.length, 'chars');
+      console.log('  - Web search:', webContextBlock.length, 'chars');
+      console.log('  - User language:', userLanguage);
+      
+      // Show first 300 chars of system prompt
+      console.log('👁️ System prompt preview:');
+      console.log(systemPrompt.slice(0, 300) + '...');
 
       // ─────────────────────────────────────────────────────────────
       // STEP 4: CALL MODEL WITH HISTORY + VALIDATE + AUTO-RETRY
       // ─────────────────────────────────────────────────────────────
+      console.log('\n' + '═'.repeat(65));
+      console.log('STEP 4: MODEL GENERATION WITH VALIDATION');
+      console.log('═'.repeat(65));
+      console.log('🤖 Model:', MODEL_GENERATION);
+      console.log('💬 User message:', userText);
+      console.log('📜 Conversation history:', conversationHistory.length, 'messages');
+      
       const result = await generateWithValidation(env, {
         model: MODEL_GENERATION,
         systemPrompt,
@@ -155,7 +238,14 @@ export default {
         personaKey: router.character,
       });
 
-      console.log('✅ Final result to return:', JSON.stringify(result, null, 2));
+      console.log('\n' + '═'.repeat(65));
+      console.log('✅ FINAL RESULT');
+      console.log('═'.repeat(65));
+      console.log(JSON.stringify(result, null, 2));
+      console.log('\n╔═══════════════════════════════════════════════════════════════╗');
+      console.log('║          WORKER REQUEST COMPLETE                              ║');
+      console.log('╚═══════════════════════════════════════════════════════════════╝\n');
+      
       return jsonResponse(result, 200);
     } catch (e) {
       return jsonResponse(
@@ -357,6 +447,8 @@ async function generateWithValidation(env, { model, systemPrompt, userMessage, c
   let lastParsed = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log('\n🔄 GENERATION ATTEMPT', attempt, 'of', MAX_ATTEMPTS);
+    
     // Append QC to SYSTEM prompt ONLY (not user)
     const qcAddon =
       attempt === 1
@@ -370,7 +462,15 @@ QC REGENERATION REQUIRED:
 - Output JSON ONLY.
 `.trim();
 
+    if (attempt > 1) {
+      console.log('⚠️ Retry mode - adding QC addon to system prompt');
+    }
+
     const violationHint = lastParsed ? `\nVIOLATIONS TO FIX: ${detectViolations(lastParsed).join(", ")}\n` : "";
+    
+    if (violationHint) {
+      console.log('❌ Previous violations:', detectViolations(lastParsed));
+    }
 
     // =====================================================
     // ✅ FIX: Build messages array WITH conversation history
@@ -416,21 +516,40 @@ QC REGENERATION REQUIRED:
     
     const response = await env.AI.run(model, { messages });
     
-    console.log('📥 AI Response received:', JSON.stringify(response, null, 2));
+    console.log('📥 RAW AI Response:', JSON.stringify(response, null, 2));
 
     let rawText = stripCodeFences(extractText(response)).trim();
+    console.log('📝 Extracted text (after stripping fences):', rawText.slice(0, 200) + '...');
 
     const parsed = safeJsonParse(rawText);
     if (!parsed) {
-      if (attempt < MAX_ATTEMPTS) continue;
+      console.error('❌ Failed to parse JSON from AI response');
+      console.log('Raw text was:', rawText);
+      if (attempt < MAX_ATTEMPTS) {
+        console.log('🔄 Retrying...');
+        continue;
+      }
+      console.log('❌ All attempts exhausted, returning fallback');
       return hardFallback(personaKey, "I couldn't format JSON. Re-ask in one sentence.");
     }
+    
+    console.log('✅ Parsed JSON successfully:', JSON.stringify(parsed, null, 2));
 
     const cleaned = cleanResponseStrict(parsed, personaKey);
+    console.log('🧹 Cleaned response:', JSON.stringify(cleaned, null, 2));
     lastParsed = cleaned;
 
     const violations = detectViolations(cleaned);
-    if (violations.length === 0) return cleaned;
+    console.log('🔍 Checking for violations...');
+    
+    if (violations.length === 0) {
+      console.log('✅ No violations detected! Response is valid.');
+      console.log('🎉 Returning successful response');
+      return cleaned;
+    }
+    
+    console.log('⚠️ Found', violations.length, 'violations:', violations);
+    console.log('🔄 Will retry with violation hints...');
 
     // loop and try again (QC stays in system prompt)
   }
@@ -509,9 +628,14 @@ function isGoodAction(nextAction) {
  * QUERY REWRITE CALL (passes detected language as hint)
  * ───────────────────────────────────────────────────────────── */
 async function runQueryRewrite(env, userText, detectedLang) {
+  console.log('🔄 Query Rewrite: Starting...');
+  console.log('📝 Input text:', userText);
+  console.log('🌍 Detected language:', detectedLang);
+  
   try {
     const hint = `User language hint: ${detectedLang}. Keep normalized_query in same language.`;
 
+    console.log('🤖 Calling rewrite model:', MODEL_REWRITE);
     const resp = await env.AI.run(MODEL_REWRITE, {
       messages: [
         { role: "system", content: QUERY_REWRITE_PROMPT },
@@ -519,27 +643,43 @@ async function runQueryRewrite(env, userText, detectedLang) {
       ],
     });
 
+    console.log('📥 Rewrite model response:', JSON.stringify(resp, null, 2));
+
     const raw = stripCodeFences(extractText(resp)).trim();
+    console.log('📝 Extracted raw text:', raw);
+    
     const parsed = safeJsonParse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      console.error('❌ Failed to parse rewrite response as JSON');
+      return null;
+    }
+
+    console.log('✅ Parsed rewrite result:', JSON.stringify(parsed, null, 2));
 
     parsed.use_internal_rag = !!parsed.use_internal_rag;
     parsed.use_web_search = !!parsed.use_web_search;
 
     // Ensure user_language exists
-    if (!parsed.user_language) parsed.user_language = detectedLang;
+    if (!parsed.user_language) {
+      console.log('⚠️ No user_language in parsed result, using detected:', detectedLang);
+      parsed.user_language = detectedLang;
+    }
 
     // Extra: web search triggers
     const t = userText.toLowerCase();
     if (/(license|permit|registration|requirements|moci|qfc|qatar)/i.test(t)) {
+      console.log('🔍 Detected licensing/permit keywords, forcing web search');
       parsed.use_web_search = true;
     }
     if (/[\u0600-\u06FF]/.test(userText) && /(ترخيص|تصريح|تسجيل|متطلبات|وزارة|قطر)/.test(userText)) {
+      console.log('🔍 Detected Arabic licensing keywords, forcing web search');
       parsed.use_web_search = true;
     }
 
+    console.log('✅ Final rewrite result:', JSON.stringify(parsed, null, 2));
     return parsed;
-  } catch (_) {
+  } catch (err) {
+    console.error('❌ Query rewrite error:', err.message);
     return null;
   }
 }
@@ -548,14 +688,26 @@ async function runQueryRewrite(env, userText, detectedLang) {
  * VECTORIZE RAG (OPTIONAL) — truth-gated
  * ───────────────────────────────────────────────────────────── */
 async function retrieveInternalExcerpts(env, query, topK = 8) {
+  console.log('🔎 Vectorize RAG: Starting retrieval...');
+  console.log('🔍 Query:', query);
+  console.log('📊 Top K:', topK);
+  
   const idx = env.MONEYAI_VECTORIZE;
-  if (!idx || typeof idx.query !== "function") return [];
+  if (!idx || typeof idx.query !== "function") {
+    console.log('⚠️ Vectorize not configured or not available');
+    return [];
+  }
 
   try {
+    console.log('🤖 Querying Vectorize index...');
     const res = await idx.query(query, { topK, returnMetadata: true });
+    
+    console.log('📥 Vectorize response:', JSON.stringify(res, null, 2));
 
     const matches = res?.matches || res?.results || [];
-    return matches
+    console.log('📊 Found', matches.length, 'matches');
+    
+    const excerpts = matches
       .slice(0, topK)
       .map((m, i) => ({
         chunk_id: String(m.id ?? m.chunk_id ?? `chunk_${i + 1}`),
@@ -564,8 +716,15 @@ async function retrieveInternalExcerpts(env, query, topK = 8) {
         source: m.metadata?.source || m.metadata?.doc || m.metadata?.title || "internal",
       }))
       .filter((x) => (x.text || "").trim().length > 0);
+    
+    console.log('✅ Returning', excerpts.length, 'filtered excerpts');
+    excerpts.forEach((ex, i) => {
+      console.log(`  [${i}] Score: ${ex.score?.toFixed(3)}, Source: ${ex.source}, ID: ${ex.chunk_id}`);
+    });
+    
+    return excerpts;
   } catch (e) {
-    console.log("Vectorize query failed:", e?.message || e);
+    console.error("❌ Vectorize query failed:", e?.message || e);
     return [];
   }
 }
@@ -584,6 +743,9 @@ function formatInternalExcerpts(excerpts) {
  * WEB SEARCH (Tavily)
  * ───────────────────────────────────────────────────────────── */
 async function searchWeb(query, apiKey) {
+  console.log('🌐 Web Search: Starting Tavily search...');
+  console.log('🔍 Query:', query);
+  
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -597,22 +759,37 @@ async function searchWeb(query, apiKey) {
     }),
   });
 
-  if (!response.ok) throw new Error(`Tavily API error: ${response.status}`);
+  console.log('📡 Tavily response status:', response.status);
+
+  if (!response.ok) {
+    console.error('❌ Tavily API error:', response.status);
+    throw new Error(`Tavily API error: ${response.status}`);
+  }
 
   const data = await response.json();
+  console.log('📥 Tavily response data:', JSON.stringify(data, null, 2));
+  
   let context = "";
 
-  if (data.answer) context += `Summary: ${data.answer}\n\n`;
+  if (data.answer) {
+    console.log('💡 Tavily answer:', data.answer);
+    context += `Summary: ${data.answer}\n\n`;
+  }
 
   if (Array.isArray(data.results) && data.results.length > 0) {
+    console.log('📊 Found', data.results.length, 'search results');
     context += "Sources:\n";
     data.results.slice(0, 3).forEach((r, i) => {
       const title = r.title || "Source";
       const content = (r.content || "").substring(0, 220);
+      console.log(`  [${i+1}] ${title}: ${content.slice(0, 100)}...`);
       context += `${i + 1}. ${title}: ${content}...\n`;
     });
+  } else {
+    console.log('⚠️ No search results found');
   }
 
+  console.log('✅ Returning web context:', context.slice(0, 200), '...');
   return context.trim();
 }
 
