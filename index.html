@@ -819,7 +819,7 @@
       REEL_DURATION: 6000,
       USE_REAL_API: true,
       WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev',
-      API_TIMEOUT: 15000
+      API_TIMEOUT: 30000  // ✅ 30s for debate mode (larger prompts)
     };
 
     const COUNCIL = [
@@ -1093,25 +1093,21 @@
         console.log('📥 RESPONSE DATA:', JSON.stringify(data, null, 2));
         console.log('═══════════════════════════════════════');
         
-        if (data.bubbles?.length) {
-          const reply = data.bubbles.map(b => {
-            let text = b.text;
-            if (typeof text === 'object') text = text.content || JSON.stringify(text);
-            return String(text || '');
-          }).join('\n\n');
-          console.log('✅ Returning bubbles reply');
-          return { reply: reply || getMockReply(chatId) };
-        }
+        // ✅ Return full data for debate mode handling
+        return {
+          mode: data.mode,
+          bubbles: data.bubbles || [],
+          data: data  // Keep full data for debugging
+        };
         
-        let fallback = data.reply || data.response || data.text;
-        if (typeof fallback === 'object') fallback = fallback.content || JSON.stringify(fallback);
-        console.log('✅ Returning fallback reply');
-        return { reply: fallback || getMockReply(chatId) };
       } catch (err) {
         clearTimeout(timeout);
         console.error('❌ API ERROR:', err);
         console.log('⚠️ Using mock reply as fallback');
-        return { reply: getMockReply(chatId) };
+        return { 
+          mode: 'reply',
+          bubbles: [{ speaker: chatId, text: getMockReply(chatId) }]
+        };
       }
     }
 
@@ -1189,13 +1185,49 @@
       await new Promise(r => setTimeout(r, CONFIG.TYPING_DELAY));
       hideTyping();
 
+      // ✅ NEW: Handle debate mode vs normal mode
       const member = COUNCIL.find(c => c.id === chatId);
-      addMessage(chatId, 'in', response.reply, {
-        tag: member?.name,
-        chips: [{ action: 'next', label: '→ Next' }, { action: 'audit', label: '⏱️ Audit' }]
-      });
+      
+      if (response.mode === 'council_debate' && response.bubbles?.length > 1) {
+        console.log('🎭 DEBATE MODE: Adding', response.bubbles.length, 'bubbles');
+        
+        // Add each speaker's bubble as a separate message
+        response.bubbles.forEach((bubble, index) => {
+          const speakerName = bubble.speaker || 'AI';
+          const bubbleText = typeof bubble.text === 'object' ? JSON.stringify(bubble.text) : String(bubble.text || '');
+          
+          console.log(`  [${index}] ${speakerName}:`, bubbleText.slice(0, 50) + '...');
+          
+          // Add message with speaker tag
+          addMessage(chatId, 'in', bubbleText, {
+            tag: speakerName,  // Show speaker name
+            chips: index === response.bubbles.length - 1 ? [  // Only last bubble gets chips
+              { action: 'next', label: '→ Next' }, 
+              { action: 'audit', label: '⏱️ Audit' }
+            ] : []
+          });
+        });
+        
+        // Update thread preview with last bubble
+        const lastBubble = response.bubbles[response.bubbles.length - 1];
+        const lastText = typeof lastBubble.text === 'object' ? JSON.stringify(lastBubble.text) : String(lastBubble.text || '');
+        thread.lastPreview = truncate(lastText, 30);
+        
+      } else {
+        console.log('💬 NORMAL MODE: Single bubble');
+        
+        // Normal mode - single message
+        const replyText = response.bubbles?.[0]?.text || response.reply || getMockReply(chatId);
+        const finalText = typeof replyText === 'object' ? JSON.stringify(replyText) : String(replyText);
+        
+        addMessage(chatId, 'in', finalText, {
+          tag: member?.name,
+          chips: [{ action: 'next', label: '→ Next' }, { action: 'audit', label: '⏱️ Audit' }]
+        });
+        
+        thread.lastPreview = truncate(finalText, 30);
+      }
 
-      thread.lastPreview = truncate(response.reply, 30);
       state.isSending = false;
       DOM.btnSend.disabled = false;
 
