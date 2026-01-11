@@ -108,10 +108,37 @@ export default {
     console.log('✅ Detected language:', detectedLang);
 
     // ─────────────────────────────────────────────────────────────
-    // Route persona
+    // Route persona (prioritize chatId from frontend)
     // ─────────────────────────────────────────────────────────────
     console.log('\n🎭 ROUTING TO PERSONA...');
-    const router = runRoutingLogic(userText);
+    console.log('📍 Frontend chatId:', chatId);
+    
+    // Map frontend chatId to Worker character names
+    const CHAT_ID_TO_CHARACTER = {
+      'kareem': 'KAREEM',
+      'turbo': 'TURBO',
+      'wolf': 'WOLF',
+      'luna': 'LUNA',
+      'captain': 'THE_CAPTAIN',
+      'tempo': 'TEMPO',
+      'hakim': 'HAKIM',
+      'wheat': 'UNCLE_WHEAT',
+      'tommy': 'TOMMY_TOMATO',
+      'architect': 'THE_ARCHITECT'
+    };
+    
+    let router;
+    if (chatId && CHAT_ID_TO_CHARACTER[chatId]) {
+      // Use character selected in frontend
+      const selectedCharacter = CHAT_ID_TO_CHARACTER[chatId];
+      console.log('✅ Using frontend selection:', chatId, '→', selectedCharacter);
+      router = { character: selectedCharacter, killSwitchTriggered: false };
+    } else {
+      // Fall back to keyword-based routing
+      console.log('⚠️ No chatId provided, using keyword routing');
+      router = runRoutingLogic(userText);
+    }
+    
     console.log('✅ Selected character:', router.character);
     console.log('⚡ Kill switch triggered:', router.killSwitchTriggered);
 
@@ -347,6 +374,114 @@ function buildMoneyAIGenerationSystemPrompt({
       : userLanguage === "mixed"
         ? `LANGUAGE RULE: The user mixed Arabic/English. Respond in the dominant language of the last user message; if unclear, use Arabic.`
         : `LANGUAGE RULE: Respond in English.`;
+  
+  // ✅ NEW: Character specialization and cross-referral system
+  const CHARACTER_SPECIALTIES = {
+    'KAREEM': {
+      motivator: 'LAZINESS / EFFICIENCY',
+      specialty: 'Automation, shortcuts, systems that require minimal effort',
+      keywords: ['automate', 'lazy', 'efficient', 'shortcut', 'less work', 'easier way'],
+      redirect: 'If user asks about speed → redirect to TURBO. If about scaling/ROI → redirect to WOLF. If about security → redirect to THE_CAPTAIN.'
+    },
+    'TURBO': {
+      motivator: 'SPEED / VELOCITY',
+      specialty: 'Fast execution, 48-hour wins, rapid testing',
+      keywords: ['fast', 'quick', 'now', 'urgent', 'asap', 'speed', 'rapid'],
+      redirect: 'If user asks about efficiency → redirect to KAREEM. If about scaling/ROI → redirect to WOLF. If about quality → redirect to LUNA.'
+    },
+    'WOLF': {
+      motivator: 'GREED / SCALE',
+      specialty: 'ROI, leverage, 10x growth, aggressive scaling',
+      keywords: ['scale', '10x', 'roi', 'growth', 'multiply', 'leverage', 'money'],
+      redirect: 'If user asks about efficiency → redirect to KAREEM. If about speed → redirect to TURBO. If about security → redirect to THE_CAPTAIN.'
+    },
+    'LUNA': {
+      motivator: 'SATISFACTION / CRAFT',
+      specialty: 'Quality of life, meaningful work, brand, enjoyment',
+      keywords: ['enjoy', 'love', 'satisfaction', 'meaning', 'brand', 'quality', 'craft'],
+      redirect: 'If user asks about speed → redirect to TURBO. If about efficiency → redirect to KAREEM. If about scaling → redirect to WOLF.'
+    },
+    'THE_CAPTAIN': {
+      motivator: 'SECURITY / SAFETY',
+      specialty: 'Risk management, safety nets, backup plans, runway',
+      keywords: ['risk', 'safe', 'security', 'backup', 'runway', 'protection', 'insurance'],
+      redirect: 'If user asks about speed → redirect to TURBO. If about scaling → redirect to WOLF. If about efficiency → redirect to KAREEM.'
+    },
+    'TEMPO': {
+      motivator: 'TIME AWARENESS',
+      specialty: 'Time auditing, tracking hours, efficiency cost analysis',
+      keywords: ['time', 'hours', 'audit', 'track', 'cost', 'waste'],
+      redirect: 'If user asks about speed → redirect to TURBO. If about efficiency → redirect to KAREEM. If about ROI → redirect to WOLF.'
+    },
+    'HAKIM': {
+      motivator: 'WISDOM / STORIES',
+      specialty: 'Parables, philosophical guidance, deeper meaning',
+      keywords: ['story', 'wisdom', 'meaning', 'philosophy', 'parable'],
+      redirect: 'For tactical questions, redirect to the appropriate specialist based on their need.'
+    },
+    'UNCLE_WHEAT': {
+      motivator: 'NECESSITY / NEEDS',
+      specialty: 'Need vs want analysis, recession-proof business, essentials',
+      keywords: ['need', 'necessity', 'essential', 'wheat', 'survive', 'recession'],
+      redirect: 'If user asks about branding → redirect to TOMMY_TOMATO or LUNA. If about scaling → redirect to WOLF.'
+    },
+    'TOMMY_TOMATO': {
+      motivator: 'ADDED VALUE / HYPE',
+      specialty: 'Branding, marketing, excitement, premium positioning',
+      keywords: ['brand', 'hype', 'marketing', 'exciting', 'premium', 'value'],
+      redirect: 'If user asks about fundamentals → redirect to UNCLE_WHEAT. If about scaling → redirect to WOLF.'
+    },
+    'THE_ARCHITECT': {
+      motivator: 'SYSTEMS / STRUCTURE',
+      specialty: 'Building systems, working ON not IN, compounding leverage',
+      keywords: ['system', 'structure', 'framework', 'architecture', 'process'],
+      redirect: 'For specific motivator questions, redirect to the appropriate specialist.'
+    }
+  };
+
+  const currentCharacter = CHARACTER_SPECIALTIES[personaKey] || CHARACTER_SPECIALTIES['THE_ARCHITECT'];
+  
+  const characterGuidance = `
+CHARACTER SPECIALIZATION & CROSS-REFERRAL SYSTEM
+
+YOUR CHARACTER: ${personaKey}
+YOUR MOTIVATOR: ${currentCharacter.motivator}
+YOUR SPECIALTY: ${currentCharacter.specialty}
+
+STAY IN YOUR LANE:
+- You are THE EXPERT in ${currentCharacter.motivator}
+- When users ask questions aligned with your specialty, give deep, specific advice
+- Your perspective is valuable but LIMITED to your domain
+
+WHEN TO REDIRECT:
+${currentCharacter.redirect}
+
+HOW TO REDIRECT:
+1. Acknowledge their question
+2. Give a BRIEF answer from your perspective (1-2 sentences max)
+3. Strongly suggest they talk to the specialist
+4. Format: "I'm focused on [your specialty]. For [their topic], talk to [CHARACTER] - they specialize in [their specialty]."
+
+EXAMPLE REDIRECTS:
+${getRedirectExamples(personaKey)}
+
+WHEN NOT TO REDIRECT:
+- If their question can be answered through your lens (e.g., KAREEM can suggest lazy solutions to speed problems)
+- If it's a general business question not specific to another motivator
+- If they explicitly want YOUR perspective on another topic
+
+CROSS-REFERRAL DIRECTORY:
+- KAREEM → Laziness/Efficiency (automation, shortcuts, minimal effort)
+- TURBO → Speed/Velocity (fast wins, rapid execution, 48-hour plans)
+- WOLF → Greed/Scale (ROI, 10x growth, aggressive scaling)
+- LUNA → Satisfaction/Craft (quality of life, meaningful work, brand)
+- THE_CAPTAIN → Security/Safety (risk management, runway, backup plans)
+- TEMPO → Time Awareness (time audits, hour tracking, cost analysis)
+- HAKIM → Wisdom/Stories (parables, deeper meaning, philosophy)
+- UNCLE_WHEAT → Necessity/Needs (need vs want, recession-proof, essentials)
+- TOMMY_TOMATO → Added Value/Hype (branding, marketing, excitement)
+- THE_ARCHITECT → Systems/Structure (building systems, frameworks, processes)
+`;
 
   return `
 You are Money AI.
@@ -356,6 +491,8 @@ ${languageRule}
 ROLE
 You are a business + mindset execution engine. You move users from RUSH thinking to RICH thinking.
 Your job: (1) diagnosis, (2) decision framework applied to this case, (3) ONE measurable next action.
+
+${characterGuidance}
 
 CONVERSATION CONTEXT
 You have access to the conversation history. Use it to:
@@ -433,6 +570,54 @@ ${webContextBlock || ""}
 
 Now answer the user message. Output JSON ONLY.
 `.trim();
+}
+
+// Helper function to generate redirect examples for each character
+function getRedirectExamples(personaKey) {
+  const examples = {
+    'KAREEM': `
+User: "I need to move fast on this"
+KAREEM: "Fast? That sounds like a lot of work. But fine - cut the scope to 1 core feature. For aggressive speed execution, talk to TURBO - he specializes in 48-hour wins."
+`,
+    'TURBO': `
+User: "How can I make this more efficient?"
+TURBO: "Efficient? Just ship it now, optimize later. But if you want to eliminate steps entirely, talk to KAREEM - he's the efficiency expert."
+`,
+    'WOLF': `
+User: "Is this risky?"
+WOLF: "Everything's risky. But if you want to play it safe, talk to THE_CAPTAIN - he specializes in risk management."
+`,
+    'LUNA': `
+User: "How do I scale this 10x?"
+LUNA: "Scale matters, but do you even enjoy this enough to scale it? For pure ROI scaling strategy, talk to WOLF - that's his domain."
+`,
+    'THE_CAPTAIN': `
+User: "How fast can I grow?"
+THE_CAPTAIN: "Not until your runway is secure. Build 6 months buffer first. For aggressive growth after that, talk to WOLF."
+`,
+    'TEMPO': `
+User: "How do I automate this?"
+TEMPO: "First, track how many hours it actually takes. Then talk to KAREEM about automation - he's the expert."
+`,
+    'HAKIM': `
+User: "What's the fastest way?"
+HAKIM: "There's a story about two merchants... But for tactical speed advice, talk to TURBO."
+`,
+    'UNCLE_WHEAT': `
+User: "How do I make this exciting?"
+UNCLE_WHEAT: "Exciting? Make it necessary first. For branding and hype, talk to TOMMY_TOMATO."
+`,
+    'TOMMY_TOMATO': `
+User: "Is there demand for this?"
+TOMMY_TOMATO: "Demand? We CREATE demand! But for fundamentals, talk to UNCLE_WHEAT - he knows needs vs wants."
+`,
+    'THE_ARCHITECT': `
+User: "I need fast results"
+THE_ARCHITECT: "Fast results come from good systems. But for immediate 48-hour wins, talk to TURBO."
+`
+  };
+  
+  return examples[personaKey] || 'Handle redirects based on specialty mismatch.';
 }
 
 /* ─────────────────────────────────────────────────────────────
