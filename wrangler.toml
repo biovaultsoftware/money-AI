@@ -8,8 +8,8 @@ binding = "AI"
 
 # Vectorize Binding (For RAG/Knowledge Base)
 [[vectorize]]
-binding = "MONEYAI_VECTORIZE"
-index_name = "moneyai-knowledge"
+binding = "HUMAN1STAI"
+index_name = "ai-search-human1stai"
 
 # Secrets (set via wrangler secret put)
 # TAVILY_API_KEY - for web search
