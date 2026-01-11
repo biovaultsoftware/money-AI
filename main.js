@@ -113,6 +113,7 @@
   const DOM = {};
 
   function cacheDom() {
+    console.log('🔍 Caching DOM elements...');
     DOM.body = document.body;
     DOM.lockScreen = $('#lockScreen');
     DOM.btnUnlock = $('#btnUnlock');
@@ -180,6 +181,13 @@
     DOM.statUserMsgsDrawer = $('#statUserMsgsDrawer');
     DOM.statAiMsgsDrawer = $('#statAiMsgsDrawer');
     DOM.statActionsDrawer = $('#statActionsDrawer');
+    
+    console.log('✅ DOM cached. Key elements:', {
+      msgInput: !!DOM.msgInput,
+      btnSend: !!DOM.btnSend,
+      thread: !!DOM.thread,
+      composer: !!DOM.composer
+    });
   }
 
   // IndexedDB
@@ -641,11 +649,32 @@
 
   // Messaging
   async function sendMessage() {
-    if (state.isSending) return;
+    console.log('🚨 sendMessage() CALLED');
+    console.log('📌 state.isSending:', state.isSending);
+    
+    if (state.isSending) {
+      console.log('⚠️ EARLY EXIT: Already sending');
+      return;
+    }
+    
     const chatId = state.activeChatId;
-    if (!chatId) return;
+    console.log('📌 activeChatId:', chatId);
+    
+    if (!chatId) {
+      console.log('⚠️ EARLY EXIT: No active chat');
+      return;
+    }
+    
     const text = DOM.msgInput.value.trim();
-    if (!text) return;
+    console.log('📌 Message text:', text);
+    console.log('📌 Message length:', text.length);
+    
+    if (!text) {
+      console.log('⚠️ EARLY EXIT: Empty message');
+      return;
+    }
+    
+    console.log('✅ All checks passed, proceeding with message send');
 
     const thread = state.threads.get(chatId);
     if ((thread?.userMessageCount || 0) >= CONFIG.SESSION_LIMIT) {
@@ -947,7 +976,9 @@ Captain: "Build safety first."
   }
 
   async function openChat(chatId) {
+    console.log('💬 Opening chat:', chatId);
     state.activeChatId = chatId;
+    console.log('✅ activeChatId set to:', state.activeChatId);
     const m = COUNCIL.find(c => c.id === chatId);
     const thread = state.threads.get(chatId);
 
@@ -1014,6 +1045,7 @@ Captain: "Build safety first."
 
   // Events
   function bindEvents() {
+    console.log('🔗 Binding events...');
     DOM.btnUnlock.onclick = attemptBiometricUnlock;
     DOM.btnUnlockDemo.onclick = unlockApp;
     DOM.btnBack.onclick = () => setRoute('home');
@@ -1028,9 +1060,20 @@ Captain: "Build safety first."
       DOM.btnSend.disabled = !DOM.msgInput.value.trim();
     };
     DOM.msgInput.onkeydown = e => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      if (e.key === 'Enter' && !e.shiftKey) { 
+        console.log('⌨️ Enter key pressed, calling sendMessage()');
+        e.preventDefault(); 
+        sendMessage(); 
+      }
     };
-    DOM.btnSend.onclick = sendMessage;
+    DOM.btnSend.onclick = () => {
+      console.log('🖱️ Send button clicked, calling sendMessage()');
+      sendMessage();
+    };
+    console.log('✅ Event handlers attached to:', {
+      btnSend: !!DOM.btnSend.onclick,
+      msgInput: !!DOM.msgInput.onkeydown
+    });
     DOM.quickActions.onclick = e => {
       const btn = e.target.closest('.quick-btn');
       if (btn) handleChip(btn.dataset.action);
