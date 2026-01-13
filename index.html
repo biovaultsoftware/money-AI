@@ -1038,36 +1038,43 @@
       if (DOM.sessionLimit) DOM.sessionLimit.classList.toggle('warning', (thread.userMessageCount || 0) >= CONFIG.SESSION_LIMIT - 2);
     }
 
-    // ✅ NEW: Format conversation history for API
+    // ✅ Helper to check if string is JSON object
+    function looksLikeJsonObject(s) {
+      const t = String(s || '').trim();
+      return t.startsWith('{') && t.endsWith('}');
+    }
+
+    // ✅ FIXED: ONLY include assistant messages that have rawJson
     function formatHistoryForAPI(messages) {
       console.log('🔄 formatHistoryForAPI called with', messages?.length || 0, 'messages');
       if (!messages || !messages.length) return [];
       
       const recentMessages = messages.slice(-20); // Last 20 messages
-      const formatted = recentMessages.map(msg => {
+      const formatted = [];
+      
+      for (const msg of recentMessages) {
         if (msg.dir === 'out') {
-          // User message - send as text
-          return {
+          // User message - always include
+          formatted.push({
             role: 'user',
             content: msg.text
-          };
-        } else {
-          // Assistant message - send as JSON if available
-          if (msg.rawJson) {
-            // ✅ FIX: Send raw JSON so model learns consistent format
-            return {
-              role: 'assistant',
-              content: JSON.stringify(msg.rawJson)
-            };
-          } else {
-            // Fallback to text (for old messages)
-            return {
-              role: 'assistant',
-              content: msg.text
-            };
-          }
+          });
+          continue;
         }
-      });
+        
+        // Assistant message - ONLY include if it has rawJson
+        if (msg.rawJson) {
+          const jsonStr = JSON.stringify(msg.rawJson);
+          formatted.push({
+            role: 'assistant',
+            content: jsonStr
+          });
+          continue;
+        }
+        
+        // ❌ SKIP plain text assistant messages (prevents style poisoning)
+        console.log('⏭️ Skipping assistant message without rawJson');
+      }
       
       console.log('✅ Formatted', formatted.length, 'history messages');
       return formatted;
@@ -1455,7 +1462,19 @@ Architect: "Build system."
 
       const msgs = state.messages.get(chatId) || [];
       if (msgs.length === 0 && OPENER[chatId]) {
-        addMessage(chatId, 'in', OPENER[chatId], { tag: m?.name });
+        // ✅ FIX: Store OPENER as JSON so history is consistent
+        addMessage(chatId, 'in', OPENER[chatId], { 
+          tag: m?.name,
+          rawJson: {
+            mode: "reply",
+            selected_character: "SYSTEM",
+            bubbles: [{ speaker: "SYSTEM", text: OPENER[chatId] }],
+            final: { 
+              decision: "ACCEPT", 
+              next_action: "Ask your next question. Success: 1 clear sentence." 
+            }
+          }
+        });
         thread.lastTs = Date.now();
         thread.lastPreview = OPENER[chatId];
       }
