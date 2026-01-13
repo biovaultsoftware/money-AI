@@ -1044,10 +1044,30 @@
       if (!messages || !messages.length) return [];
       
       const recentMessages = messages.slice(-20); // Last 20 messages
-      const formatted = recentMessages.map(msg => ({
-        role: msg.dir === 'out' ? 'user' : 'assistant',
-        content: msg.text
-      }));
+      const formatted = recentMessages.map(msg => {
+        if (msg.dir === 'out') {
+          // User message - send as text
+          return {
+            role: 'user',
+            content: msg.text
+          };
+        } else {
+          // Assistant message - send as JSON if available
+          if (msg.rawJson) {
+            // ✅ FIX: Send raw JSON so model learns consistent format
+            return {
+              role: 'assistant',
+              content: JSON.stringify(msg.rawJson)
+            };
+          } else {
+            // Fallback to text (for old messages)
+            return {
+              role: 'assistant',
+              content: msg.text
+            };
+          }
+        }
+      });
       
       console.log('✅ Formatted', formatted.length, 'history messages');
       return formatted;
@@ -1198,9 +1218,10 @@
           
           console.log(`  [${index}] ${speakerName}:`, bubbleText.slice(0, 50) + '...');
           
-          // Add message with speaker tag
+          // ✅ FIX: Store raw JSON for history
           addMessage(chatId, 'in', bubbleText, {
             tag: speakerName,  // Show speaker name
+            rawJson: response.data,  // ✅ Store full JSON response
             chips: index === response.bubbles.length - 1 ? [  // Only last bubble gets chips
               { action: 'next', label: '→ Next' }, 
               { action: 'audit', label: '⏱️ Audit' }
@@ -1220,8 +1241,10 @@
         const replyText = response.bubbles?.[0]?.text || response.reply || getMockReply(chatId);
         const finalText = typeof replyText === 'object' ? JSON.stringify(replyText) : String(replyText);
         
+        // ✅ FIX: Store raw JSON for history
         addMessage(chatId, 'in', finalText, {
           tag: member?.name,
+          rawJson: response.data,  // ✅ Store full JSON response
           chips: [{ action: 'next', label: '→ Next' }, { action: 'audit', label: '⏱️ Audit' }]
         });
         
@@ -1237,7 +1260,14 @@
     }
 
     function addMessage(chatId, dir, text, opts = {}) {
-      const msg = { id: `${chatId}:${Date.now()}`, chatId, dir, text, ts: Date.now(), ...opts };
+      const msg = { 
+        id: `${chatId}:${Date.now()}`, 
+        chatId, 
+        dir, 
+        text, 
+        ts: Date.now(), 
+        ...opts 
+      };
       state.messages.get(chatId).push(msg);
       return msg;
     }
