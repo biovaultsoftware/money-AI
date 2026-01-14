@@ -653,6 +653,7 @@
       DOM.toast = $('#toast');
       DOM.toastText = $('#toastText');
       DOM.themeToggle = $('#themeToggle');
+      DOM.main = $('#mainArea'); // Cached main area for gesture tracking
     }
 
     function toggleTheme() {
@@ -1218,6 +1219,25 @@
           else if (e.key === 'ArrowRight') nextReel();
         }
       };
+      
+      // Swipe to back logic
+      let touchStartX = 0;
+      let touchStartY = 0;
+      
+      DOM.main.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+      }, { passive: true });
+
+      DOM.main.addEventListener('touchend', e => {
+        if (state.route !== 'chat') return;
+        const touchEndX = e.changedTouches[0].screenX;
+        const touchEndY = e.changedTouches[0].screenY;
+        
+        if (touchEndX - touchStartX > 100 && Math.abs(touchEndY - touchStartY) < 50) {
+          setRoute('home');
+        }
+      }, { passive: true });
     }
 
     function init() {
