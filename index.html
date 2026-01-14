@@ -220,7 +220,14 @@
     .btn-back { display: none; width: 32px; height: 32px; background: var(--bg-tertiary); border-radius: 8px; align-items: center; justify-content: center; cursor: pointer; }
     .header-avatar { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; background: var(--bg-tertiary); }
     .header-info { flex: 1; min-width: 0; }
-    .header-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+    .header-name { 
+      font-family: var(--font-display); 
+      font-weight: 700; 
+      font-size: 14px;
+      white-space: nowrap;      /* Force single line */
+      overflow: hidden;         /* Hide overflow */
+      text-overflow: ellipsis;  /* Add "..." */
+    }
     .session-limit { font-size: 10px; font-family: monospace; color: var(--text-tertiary); padding: 4px 8px; background: var(--bg-tertiary); border-radius: 20px; }
 
     /* Thread (Messages) */
@@ -425,7 +432,7 @@
           <div class="header-name" id="headerName">Kareem</div>
           <div class="header-status" id="headerStatus" style="font-size:11px; color:var(--text-secondary);">Work less, earn more.</div>
         </div>
-        <div class="header-info" style="flex:0; display:flex; gap:8px; align-items:center;">
+        <div class="header-info" style="flex-shrink:0; display:flex; gap:8px; align-items:center;">
           <div class="session-limit" id="sessionLimit"><span id="msgCount">0</span>/12</div>
           <button class="header-btn" id="btnCouncil" style="background:transparent; padding:6px;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
