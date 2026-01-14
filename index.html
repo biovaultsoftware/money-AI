@@ -236,7 +236,14 @@
       width: 100%;
     }
 
-    .message-row { display: flex; gap: 10px; max-width: 85%; }
+    .message-row { 
+      display: flex; 
+      gap: 10px; 
+      max-width: 85%;
+      animation: msgIn 0.25s ease-out backwards; /* Restored Animation */
+    }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
     .message-row.in { align-self: flex-start; }
     .message-row.out { align-self: flex-end; flex-direction: row-reverse; }
 
@@ -308,7 +315,7 @@
       width: 100%;
       background: transparent;
       resize: none;
-      font-size: 15px;
+      font-size: 16px; /* CRITICAL: 16px prevents iOS zoom on focus */
       line-height: 1.4;
       max-height: 100px;
       min-height: 22px;
@@ -496,7 +503,7 @@
       TOAST_DURATION: 2500,
       REEL_DURATION: 6000,
       USE_REAL_API: true,
-      WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev', // ✅ Relative path for Cloudflare
+      WORKER_URL: 'https://human1stai.rr-rshemodel.workers.dev', 
       API_TIMEOUT: 30000 
     };
 
@@ -772,6 +779,8 @@
           chatId: chatId
         };
         
+        console.log('📡 Calling API for', chatId); // Restored Log
+        
         const res = await fetch(CONFIG.WORKER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -793,6 +802,7 @@
         
       } catch (err) {
         clearTimeout(timeout);
+        console.error('❌ API Error', err); // Restored Log
         return { 
           mode: 'reply',
           bubbles: [{ speaker: chatId, text: getMockReply(chatId) }]
@@ -1161,6 +1171,7 @@
     }
 
     function init() {
+      console.log('🏛️ System Ready: Money AI Premium v2.1'); // Restored Log
       cacheDom();
       loadData();
       bindEvents();
